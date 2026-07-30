@@ -1,0 +1,297 @@
+// Sufara — database schema.
+//
+// Provider is SQLite for local development and tests. The schema deliberately
+// avoids enums and scalar lists so that switching `provider` to "postgresql"
+// for production requires no model changes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+/// role: "USER" | "ADMIN"
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         String   @default("USER")
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  preference          UserPreference?
+  interests           UserInterest[]
+  savedPlaces         SavedPlace[]
+  itineraries         Itinerary[]
+  refreshTokens       RefreshToken[]
+  passwordResets      PasswordResetToken[]
+  createdPlaces       Place[]              @relation("PlaceCreatedBy")
+
+  @@index([role])
+}
+
+/// travelMode: "WALKING" | "DRIVING"
+/// walkingTolerance: "LOW" | "MEDIUM" | "HIGH"
+model UserPreference {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  travelMode        String   @default("DRIVING")
+  walkingTolerance  String   @default("MEDIUM")
+  maxWalkingMeters  Int      @default(2000)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserInterest {
+  userId     String
+  categoryId String
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([userId, categoryId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Geography: Country -> City -> Place
+// ---------------------------------------------------------------------------
+
+model Country {
+  id        String   @id @default(cuid())
+  name      String
+  /// ISO 3166-1 alpha-2
+  code      String   @unique
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cities City[]
+  places Place[]
+}
+
+model City {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String
+  countryId    String
+  latitude     Float
+  longitude    Float
+  timezone     String   @default("UTC")
+  heroImageUrl String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  country Country @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  places  Place[]
+
+  @@unique([countryId, slug])
+  @@index([countryId])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  /// Stable machine key, e.g. "MOSQUE"
+  key       String   @unique
+  name      String
+  icon      String   @default("place")
+  colorHex  String   @default("#1F6F54")
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  places        PlaceCategory[]
+  primaryPlaces Place[]         @relation("PrimaryCategory")
+  interestedBy  UserInterest[]
+}
+
+/// status: "DRAFT" | "ACTIVE" | "INACTIVE"
+model Place {
+  id                            String   @id @default(cuid())
+  name                          String
+  slug                          String
+  shortDescription              String
+  description                   String
+  countryId                     String
+  cityId                        String
+  latitude                      Float
+  longitude                     Float
+  primaryCategoryId             String
+  estimatedVisitDurationMinutes Int      @default(30)
+  /// 1..100, admin-managed. Drives planner prioritisation.
+  importanceScore               Int      @default(50)
+  status                        String   @default("ACTIVE")
+  address                       String?
+  website                       String?
+  historicalPeriod              String?
+  religiousSignificance         String?
+  createdById                   String?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  country         Country         @relation(fields: [countryId], references: [id], onDelete: Restrict)
+  city            City            @relation(fields: [cityId], references: [id], onDelete: Restrict)
+  primaryCategory Category        @relation("PrimaryCategory", fields: [primaryCategoryId], references: [id], onDelete: Restrict)
+  createdBy       User?           @relation("PlaceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  categories      PlaceCategory[]
+  photos          Photo[]
+  openingHours    OpeningHour[]
+  savedBy         SavedPlace[]
+  itineraryStops  ItineraryStop[]
+
+  @@unique([cityId, slug])
+  @@index([cityId, status])
+  @@index([countryId])
+  @@index([primaryCategoryId])
+}
+
+model PlaceCategory {
+  placeId    String
+  categoryId String
+
+  place    Place    @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([placeId, categoryId])
+  @@index([categoryId])
+}
+
+model Photo {
+  id           String   @id @default(cuid())
+  placeId      String
+  storageKey   String
+  url          String
+  thumbnailUrl String?
+  caption      String?
+  isPrimary    Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  width        Int?
+  height       Int?
+  createdAt    DateTime @default(now())
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@index([placeId])
+}
+
+/// Minutes from local midnight. dayOfWeek: 0 = Sunday .. 6 = Saturday.
+model OpeningHour {
+  id            String  @id @default(cuid())
+  placeId       String
+  dayOfWeek     Int
+  opensMinutes  Int
+  closesMinutes Int
+  isClosed      Boolean @default(false)
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, dayOfWeek])
+  @@index([placeId])
+}
+
+// ---------------------------------------------------------------------------
+// User content
+// ---------------------------------------------------------------------------
+
+model SavedPlace {
+  userId    String
+  placeId   String
+  note      String?
+  createdAt DateTime @default(now())
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, placeId])
+  @@index([placeId])
+}
+
+/// travelMode: "WALKING" | "DRIVING"
+/// status: "DRAFT" | "PLANNED" | "IN_PROGRESS" | "COMPLETED"
+model Itinerary {
+  id                  String    @id @default(cuid())
+  userId              String
+  title               String
+  cityId              String?
+  startLabel          String    @default("Starting point")
+  startLatitude       Float
+  startLongitude      Float
+  endLatitude         Float?
+  endLongitude        Float?
+  availableMinutes    Int
+  travelMode          String    @default("DRIVING")
+  totalTravelMinutes  Int       @default(0)
+  totalVisitMinutes   Int       @default(0)
+  totalDistanceMeters Int       @default(0)
+  bufferMinutes       Int       @default(0)
+  status              String    @default("PLANNED")
+  startedAt           DateTime?
+  completedAt         DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  stops ItineraryStop[]
+
+  @@index([userId])
+}
+
+model ItineraryStop {
+  id                            String    @id @default(cuid())
+  itineraryId                   String
+  placeId                       String
+  order                         Int
+  /// Minutes after itinerary start when the traveller is expected to arrive.
+  estimatedArrivalOffsetMinutes Int       @default(0)
+  estimatedVisitDurationMinutes Int       @default(30)
+  travelTimeFromPreviousMinutes Int       @default(0)
+  distanceFromPreviousMeters    Int       @default(0)
+  completedAt                   DateTime?
+
+  itinerary Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  place     Place     @relation(fields: [placeId], references: [id], onDelete: Restrict)
+
+  @@unique([itineraryId, order])
+  @@index([itineraryId])
+  @@index([placeId])
+}

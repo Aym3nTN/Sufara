@@ -1,0 +1,97 @@
+# Render Blueprint for the Sufara API.
+#
+# The database is Neon, not Render Postgres, so no database is declared here —
+# only the web service that connects to it.
+#
+# Every secret is declared with `sync: false`, which means Render prompts for the
+# value on first deploy and stores it encrypted. No credential belongs in this
+# file or anywhere else in the repository.
+#
+# Deploy:  Render Dashboard → New → Blueprint → point at this repository.
+# Details: docs/DEPLOYMENT.md
+
+services:
+  - type: web
+    name: sufara-api
+    runtime: node
+    plan: starter
+    region: frankfurt # move this closer to your Neon region to cut query latency
+    rootDir: api
+    healthCheckPath: /health
+
+    # The Deploy API workflow migrates Neon and *then* calls this service's
+    # deploy hook. Auto-deploy would race that ordering, so it stays off.
+    autoDeploy: false
+
+    # `prisma generate` must run against the PostgreSQL schema so the client
+    # bundled into the build speaks Postgres rather than SQLite.
+    buildCommand: npm ci && npm run prisma:prod:generate && npm run build
+
+    # Runs after the build and before traffic moves to the new version, so the
+    # schema is never behind the code that expects it.
+    preDeployCommand: npm run prisma:prod:deploy
+
+    startCommand: npm start
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PROVIDER
+        value: postgresql
+
+      # --- Neon -------------------------------------------------------------
+      # DATABASE_URL: the POOLED connection string (host contains "-pooler").
+      # DIRECT_URL:   the DIRECT connection string, for migrations only.
+      # Both need ?sslmode=require.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+
+      # --- Auth -------------------------------------------------------------
+      # Generated per environment. The API refuses to boot with dev defaults.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ACCESS_TOKEN_TTL_MINUTES
+        value: "15"
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"
+
+      # --- Public origin ----------------------------------------------------
+      # Set to this service's URL once Render has assigned it, e.g.
+      # https://sufara-api.onrender.com
+      - key: API_BASE_URL
+        sync: false
+
+      # --- Cloudflare R2 (photo storage) ------------------------------------
+      # A container filesystem is recycled on every deploy, so uploads must not
+      # live on local disk. The API refuses to boot if these are incomplete.
+      - key: STORAGE_PROVIDER
+        value: r2
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      # Public read URL for the bucket: the r2.dev domain or your custom domain.
+      - key: R2_PUBLIC_BASE_URL
+        sync: false
+
+      # --- Routing ----------------------------------------------------------
+      # The offline estimator needs no key or quota. Switch to osrm (or another
+      # provider) once you have chosen one — see docs/ARCHITECTURE.md.
+      - key: ROUTING_PROVIDER
+        value: haversine
+
+      # --- Planner tuning ---------------------------------------------------
+      - key: PLANNER_BUFFER_RATIO
+        value: "0.08"
+      - key: PLANNER_MIN_BUFFER_MINUTES
+        value: "10"
+      - key: PLANNER_MAX_BUFFER_MINUTES
+        value: "30"

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+.expo/
+web-build/
+*.log
+.DS_Store
+.env
+.env.local
+*.db
+*.db-journal
+api/uploads/
+api/uploads-test/

@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API — typecheck & tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+
+      - run: npm ci
+
+      # The client must exist before tsc can see the generated Prisma types.
+      - run: npx prisma generate
+
+      - run: npm run typecheck
+
+      # Tests migrate and seed a throwaway SQLite database themselves
+      # (tests/globalSetup.ts), so no service container is needed.
+      - run: npm test
+
+      # The production PostgreSQL schema is generated from the canonical one;
+      # this fails if a model change never reached the schema Neon migrates.
+      - run: npm run prisma:prod:check
+
+      - name: Build (proves the deployed artifact compiles)
+        run: npm run build
+
+  mobile:
+    name: Mobile — typecheck & web export
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      # Building the web export here catches bundler and config breakage that a
+      # typecheck alone cannot, and is the same artifact Cloudflare Pages ships.
+      - name: Export web build
+        env:
+          EXPO_PUBLIC_API_URL: ${{ vars.API_BASE_URL && format('{0}/api/v1', vars.API_BASE_URL) || 'http://localhost:4000/api/v1' }}
+        run: npm run build:web

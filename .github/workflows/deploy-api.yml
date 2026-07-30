@@ -1,0 +1,110 @@
+name: Deploy API
+
+# Migrations run to completion against Neon *before* Render is told to deploy,
+# so the schema is never behind the code that expects it. Render's own
+# auto-deploy is turned off in render.yaml (`autoDeploy: false`) precisely so
+# this workflow is the single, ordered trigger.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'api/**'
+      - 'render.yaml'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: 'Seed reference data and demo accounts (safe to re-run; never resets an existing password)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Migrate Neon, then deploy Render
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment in repo settings if you want
+    # a human approval gate before anything touches production.
+    environment: production
+
+    defaults:
+      run:
+        working-directory: api
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: api/package-lock.json
+
+      - run: npm ci
+
+      - name: Fail if the production schema drifted from the canonical one
+        run: npm run prisma:prod:check
+
+      - name: Generate the PostgreSQL client
+        run: npm run prisma:prod:generate
+
+      - name: Apply migrations to Neon
+        env:
+          # Pooled URL satisfies the datasource; migrations themselves go over
+          # DIRECT_URL, because Prisma's advisory locks cannot cross a pooler.
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.NEON_DIRECT_URL }}
+        run: npm run prisma:prod:deploy
+
+      - name: Seed reference data
+        if: inputs.seed
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.NEON_DIRECT_URL }}
+          DATABASE_PROVIDER: postgresql
+          # Without this the seed generates a password and prints it into the
+          # workflow log, where it would be readable by anyone with repo access.
+          SEED_PASSWORD: ${{ secrets.SEED_PASSWORD }}
+        run: |
+          if [ -z "${SEED_PASSWORD}" ]; then
+            echo "::error::Set the SEED_PASSWORD secret before seeding, so no password is written to the build log."
+            exit 1
+          fi
+          npx tsx prisma/seed.ts
+
+      - name: Trigger the Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "${HOOK}" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL is not set (Render → your service → Settings → Deploy Hook)."
+            exit 1
+          fi
+          curl --fail --silent --show-error -X POST "${HOOK}" > /dev/null
+          echo "Render deploy requested."
+
+      - name: Wait for the new version to answer /health
+        if: vars.API_BASE_URL != ''
+        run: |
+          BASE="${{ vars.API_BASE_URL }}"
+          echo "Polling ${BASE}/health for up to 10 minutes…"
+          for attempt in $(seq 1 60); do
+            body=$(curl --silent --max-time 10 "${BASE}/health" || true)
+            case "${body}" in
+              *'"status":"ok"'*)
+                echo "Healthy after ~$((attempt * 10))s: ${body}"
+                exit 0
+                ;;
+            esac
+            sleep 10
+          done
+          echo "::error::${BASE}/health did not report ok within 10 minutes. Check the Render deploy log."
+          exit 1
+
+      - name: Note when no health check ran
+        if: vars.API_BASE_URL == ''
+        run: echo "::warning::Set the API_BASE_URL repository variable to have this workflow verify the deploy."
