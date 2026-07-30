@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Sufara API \u2014 Islamic heritage & ziyarat travel companion backend",
+  "description": "Sufara API — Islamic heritage & ziyarat travel companion backend",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.build.json",
@@ -35,8 +35,8 @@
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
-    "multer": "^1.4.5-lts.1",
-    "sharp": "^0.33.5",
+    "multer": "^2.2.0",
+    "sharp": "^0.35.3",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -45,7 +45,7 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/morgan": "^1.9.9",
-    "@types/multer": "^1.4.12",
+    "@types/multer": "^2.2.0",
     "@types/node": "^22.10.7",
     "@types/supertest": "^6.0.2",
     "embedded-postgres": "^18.4.0-beta.17",

@@ -1,6 +1,17 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { api, randomPassword, app, asAdmin, asTraveler, categoryByKey, cityByName, placeByName, V1 } from './helpers.js';
+import {
+  api,
+  app,
+  asAdmin,
+  asTraveler,
+  categoryByKey,
+  cityByName,
+  onePixelPng,
+  placeByName,
+  randomPassword,
+  V1,
+} from './helpers.js';
 import { prisma } from '../src/lib/prisma.js';
 
 type Method = 'get' | 'post';
@@ -233,6 +244,49 @@ describe('admin place management', () => {
       .query({ search: 'Azhar' })
       .set('Authorization', bearer);
     expect(search.body.items[0].name).toContain('Azhar');
+  });
+
+  it('accepts a real image upload and re-encodes it', async () => {
+    // Exercises the whole multer → sharp → storage path, so a breaking upgrade
+    // of either shows up here rather than in production on the first upload.
+    const { accessToken } = await asAdmin();
+    const quba = await placeByName('Quba');
+    const png = onePixelPng();
+
+    const uploaded = await api()
+      .post(`${V1}/admin/places/${quba.id}/photos`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .attach('photo', png, { filename: 'test.png', contentType: 'image/png' })
+      .field('caption', 'From the admin test suite');
+
+    expect(uploaded.status).toBe(201);
+    const photo = uploaded.body.photo;
+    // sharp re-encodes to JPEG regardless of the uploaded format (this also
+    // strips EXIF/GPS from real photos).
+    expect(photo.url).toMatch(/\.jpg$/);
+    expect(photo.thumbnailUrl).toMatch(/-thumb\.jpg$/);
+    expect(photo.width).toBeGreaterThan(0);
+
+    await api()
+      .delete(`${V1}/admin/photos/${photo.id}`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(204);
+  });
+
+  it('rejects a non-image upload by inspecting the bytes, not the filename', async () => {
+    const { accessToken } = await asAdmin();
+    const quba = await placeByName('Quba');
+
+    const response = await api()
+      .post(`${V1}/admin/places/${quba.id}/photos`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      // A text payload wearing a .png name and an image MIME type.
+      .attach('photo', Buffer.from('this is definitely not an image'), {
+        filename: 'evil.png',
+        contentType: 'image/png',
+      });
+
+    expect(response.status).toBe(400);
   });
 });
 

@@ -60,3 +60,41 @@ export async function placeByName(name: string) {
 
 /** Al-Masjid an-Nabawi's forecourt — the natural "I just arrived" reference point. */
 export const MADINAH_CENTRE = { latitude: 24.4686, longitude: 39.6142 };
+
+
+/** A minimal valid 8×8 PNG, for exercising the image-upload path. */
+export function onePixelPng(): Buffer {
+  const crc = (buf: Buffer): number => {
+    let c = ~0;
+    for (const byte of buf) {
+      c ^= byte;
+      for (let i = 0; i < 8; i += 1) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+    }
+    return (~c) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer): Buffer => {
+    const typeBuf = Buffer.from(type, 'ascii');
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const crcBuf = Buffer.alloc(4);
+    crcBuf.writeUInt32BE(crc(Buffer.concat([typeBuf, data])));
+    return Buffer.concat([len, typeBuf, data, crcBuf]);
+  };
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(8, 0);
+  ihdr.writeUInt32BE(8, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // colour type: truecolour
+
+  const zlib = require('node:zlib') as typeof import('node:zlib');
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(8 * 3, 0xff)]);
+  const idat = zlib.deflateSync(Buffer.concat(Array.from({ length: 8 }, () => row)));
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', idat),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
