@@ -16,6 +16,7 @@ import {
   Screen,
   Wrap,
 } from '../src/components/ui';
+import { InterestGrid } from '../src/components/InterestGrid';
 import { usePlan } from '../src/state/plan';
 import { useAuth } from '../src/state/auth';
 import { colors, radius, spacing, typography } from '../src/theme';
@@ -289,27 +290,18 @@ export default function Planner() {
               title={t('planner.chooseInterests')}
               hint={t('planner.interestsHint')}
             />
-            <Wrap>
-              {categories.map((category) => {
-                const selected = draft.interestCategoryIds.includes(category.id);
-                return (
-                  <Chip
-                    key={category.id}
-                    label={category.name}
-                    glyph={categoryGlyph(category.key)}
-                    tint={category.colorHex}
-                    selected={selected}
-                    onPress={() =>
-                      setDraft({
-                        interestCategoryIds: selected
-                          ? draft.interestCategoryIds.filter((id) => id !== category.id)
-                          : [...draft.interestCategoryIds, category.id],
-                      })
-                    }
-                  />
-                );
-              })}
-            </Wrap>
+            <InterestGrid
+              categories={categories}
+              selectedIds={draft.interestCategoryIds}
+              onToggle={(id) => {
+                const selected = draft.interestCategoryIds.includes(id);
+                setDraft({
+                  interestCategoryIds: selected
+                    ? draft.interestCategoryIds.filter((existing) => existing !== id)
+                    : [...draft.interestCategoryIds, id],
+                });
+              }}
+            />
             {draft.interestCategoryIds.length === 0 ? (
               <Notice tone="primary">{t('planner.interestsHint')}</Notice>
             ) : null}

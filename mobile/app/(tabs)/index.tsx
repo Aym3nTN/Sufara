@@ -4,8 +4,7 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { api, resolveBaseUrl } from '../../src/api/client';
 import type { City, Itinerary, Place } from '../../src/api/types';
-import { PatternTile } from '../../src/components/PatternTile';
-import { PlaceTile } from '../../src/components/PlaceCard';
+import { PlaceArtwork, PlaceTile } from '../../src/components/PlaceCard';
 import {
   AppHeader,
   Badge,
@@ -158,62 +157,65 @@ export default function Home() {
       >
         {error ? <Notice tone="danger">{error}</Notice> : null}
 
-        {/* Primary call to action — planning is what the app is for. */}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('home.planVisit')}
-          onPress={() => router.push('/planner')}
-        >
-          <PatternTile seed="plan-cta" tint={colors.primary} height={168} style={{ borderRadius: radius.xl }}>
-            <View style={styles.ctaOverlay}>
-              <Text style={[typography.caption, { color: '#D8E6DE' }]}>
-                {t('onboarding.feature1Title').toUpperCase()}
-              </Text>
-              <Text style={[typography.title, { color: '#FFFFFF', marginTop: 4 }]}>
-                {t('home.planVisit')}
-              </Text>
-              <Text style={[typography.small, { color: '#CFE0D8', marginTop: 4, maxWidth: 260 }]}>
-                {t('onboarding.feature1Body')}
-              </Text>
-              <View style={styles.ctaPill}>
-                <Text style={[typography.small, { color: colors.primaryDark, fontWeight: '700' }]}>
-                  {t('home.planVisit')} →
+
+        {activeTrip ? (() => {
+          const completed = activeTrip.stops.filter((stop) => stop.completedAt).length;
+          const nextStop = activeTrip.stops.find((stop) => !stop.completedAt) ?? activeTrip.stops[0];
+          return (
+            <Card
+              onPress={() => router.push(`/trips/${activeTrip.id}`)}
+              accessibilityLabel={activeTrip.title}
+              style={[styles.activeTrip, { padding: 0, overflow: 'hidden' }]}
+            >
+              {nextStop ? (
+                <View style={styles.activeTripHero}>
+                  <View style={styles.activeTripArt}>
+                    <PlaceArtwork place={nextStop.place} height={72} showGlyph={false} />
+                  </View>
+                  <View style={{ flex: 1, paddingRight: spacing.md }}>
+                    <Text style={[typography.caption, { color: colors.primary }]}>
+                      {t('itinerary.nextStop').toUpperCase()}
+                    </Text>
+                    <Text numberOfLines={1} style={[typography.bodyStrong, { color: colors.text, marginTop: 2 }]}>
+                      {nextStop.place.name}
+                    </Text>
+                    <Text style={[typography.small, { color: colors.textMuted }]}>
+                      {activeTrip.title}
+                    </Text>
+                  </View>
+                  <Text style={{ color: colors.textFaint, fontSize: 22, paddingRight: spacing.md }}>›</Text>
+                </View>
+              ) : null}
+              <View style={styles.activeTripFooter}>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${activeTrip.stops.length > 0 ? (completed / activeTrip.stops.length) * 100 : 0}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={[typography.small, { color: colors.textMuted }]}>
+                  {completed} / {activeTrip.stops.length}
                 </Text>
               </View>
-            </View>
-          </PatternTile>
-        </Pressable>
+            </Card>
+          );
+        })() : null}
 
-        {activeTrip ? (
-          <Card
-            onPress={() => router.push(`/trips/${activeTrip.id}`)}
-            accessibilityLabel={activeTrip.title}
-            style={styles.activeTrip}
-          >
-            <View style={styles.rowBetween}>
-              <Badge label={t('trips.resume')} tone="primary" />
-              <Text style={[typography.small, { color: colors.textMuted }]}>
-                {activeTrip.stops.filter((stop) => stop.completedAt).length} / {activeTrip.stops.length}
-              </Text>
-            </View>
-            <Text style={[typography.heading, { color: colors.text, marginTop: spacing.sm }]}>
-              {activeTrip.title}
-            </Text>
-            <Text style={[typography.small, { color: colors.textMuted }]}>
-              {t('trips.resume')} →
-            </Text>
-          </Card>
-        ) : null}
-
-        <View style={styles.quickActions}>
-          <QuickAction glyph="🗺" label={t('tabs.explore')} onPress={() => router.push('/(tabs)/explore')} />
-          <QuickAction glyph="♡" label={t('tabs.saved')} onPress={() => router.push('/(tabs)/saved')} />
-          <QuickAction glyph="🧳" label={t('trips.title')} onPress={() => router.push('/trips')} />
-          <QuickAction
-            glyph={locating ? '…' : '📍'}
-            label={draft.start ? t('planner.usingLocation') : t('home.prompt')}
-            onPress={useMyLocation}
-          />
+        <View>
+          <SectionTitle title={t('home.quickActions')} />
+          <View style={styles.quickActions}>
+            <QuickAction
+              glyph="✦"
+              label={t('home.planVisit')}
+              onPress={() => router.push('/planner')}
+              tone="primary"
+            />
+            <QuickAction glyph="🗺" label={t('tabs.explore')} onPress={() => router.push('/(tabs)/explore')} />
+            <QuickAction glyph="♡" label={t('tabs.saved')} onPress={() => router.push('/(tabs)/saved')} />
+            <QuickAction glyph="🧳" label={t('trips.title')} onPress={() => router.push('/trips')} />
+          </View>
         </View>
 
         <View>
@@ -300,36 +302,73 @@ function QuickAction({
   glyph,
   label,
   onPress,
+  tone,
 }: {
   glyph: string;
   label: string;
   onPress: () => void;
+  tone?: 'primary';
 }) {
+  const isPrimary = tone === 'primary';
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
-      style={({ pressed }) => [styles.quickAction, pressed && { opacity: 0.85 }]}
+      style={({ pressed }) => [
+        styles.quickAction,
+        isPrimary && styles.quickActionPrimary,
+        pressed && { opacity: 0.85 },
+      ]}
     >
-      <Text style={{ fontSize: 20 }}>{glyph}</Text>
-      <Text style={[typography.small, { color: colors.textMuted, textAlign: 'center' }]}>{label}</Text>
+      <View style={[styles.quickIcon, isPrimary && styles.quickIconPrimary]}>
+        <Text style={{ fontSize: 20, color: isPrimary ? colors.onPrimary : colors.primary }}>
+          {glyph}
+        </Text>
+      </View>
+      <Text
+        numberOfLines={2}
+        style={[
+          typography.small,
+          {
+            color: isPrimary ? colors.onPrimary : colors.text,
+            textAlign: 'center',
+            fontWeight: '600',
+          },
+        ]}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   body: { padding: spacing.lg, paddingBottom: spacing.xxl, gap: spacing.xl },
-  ctaOverlay: { flex: 1, padding: spacing.lg, justifyContent: 'flex-end' },
-  ctaPill: {
-    marginTop: spacing.md,
-    alignSelf: 'flex-start',
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    borderRadius: radius.pill,
-  },
   activeTrip: { borderColor: colors.primary, borderWidth: 1.5 },
+  activeTripHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingLeft: 0,
+  },
+  activeTripArt: { width: 72, height: 72, overflow: 'hidden', borderTopLeftRadius: radius.lg, borderBottomLeftRadius: radius.lg },
+  activeTripFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    paddingTop: 4,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
+    overflow: 'hidden',
+  },
+  progressFill: { height: '100%', backgroundColor: colors.primary },
   rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   quickActions: { flexDirection: 'row', gap: spacing.sm },
   quickAction: {
@@ -339,8 +378,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     paddingVertical: spacing.md,
+    paddingHorizontal: 6,
     alignItems: 'center',
-    gap: 6,
+    justifyContent: 'flex-start',
+    gap: 8,
+    minHeight: 96,
+  },
+  quickActionPrimary: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  quickIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickIconPrimary: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   carousel: { gap: spacing.md, paddingRight: spacing.lg },
   tripRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md },
