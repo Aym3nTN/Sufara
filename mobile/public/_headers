@@ -1,0 +1,11 @@
+# Cloudflare Pages headers for the Sufara web build.
+
+/*
+  X-Frame-Options: DENY
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(self)
+
+# Hashed bundles are immutable, so they can be cached hard.
+/_expo/*
+  Cache-Control: public, max-age=31536000, immutable

@@ -1,0 +1,18 @@
+{
+  "name": "sufara",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Sufara \u2014 Islamic heritage & ziyarat travel companion",
+  "scripts": {
+    "setup": "npm --prefix api install && npm --prefix mobile install && npm run db:reset",
+    "db:reset": "npm --prefix api run prisma:migrate -- --name init && npm --prefix api run seed",
+    "api": "npm --prefix api run dev",
+    "mobile": "npm --prefix mobile start",
+    "mobile:web": "npm --prefix mobile run web",
+    "test": "npm --prefix api test",
+    "typecheck": "npm --prefix api run typecheck && npm --prefix mobile run typecheck",
+    "build:api": "npm --prefix api run build",
+    "build:web": "npm --prefix mobile run build:web",
+    "prisma:prod:sync": "npm --prefix api run prisma:prod:sync"
+  }
+}
