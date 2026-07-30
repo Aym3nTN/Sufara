@@ -7,7 +7,6 @@ import { MapCanvas } from '../../src/components/map';
 import { ImportanceBadge, PlaceArtwork, PlaceTile } from '../../src/components/PlaceCard';
 import {
   AppHeader,
-  Badge,
   Button,
   Card,
   Chip,
@@ -107,18 +106,31 @@ export default function PlaceDetail() {
     <Screen edges={['left', 'right']}>
       <ScrollView contentContainerStyle={{ paddingBottom: spacing.xl }}>
         <View>
-          <PlaceArtwork place={place} height={280} />
+          <PlaceArtwork place={place} height={340} />
+          {/* Bottom gradient so title text stays legible against any photo. */}
+          <View style={styles.heroScrimBottom} pointerEvents="none" />
+          {/* Top scrim keeps the floating buttons legible on light images. */}
+          <View style={styles.heroScrimTop} pointerEvents="none" />
+
           <View style={styles.heroOverlay}>
-            <Wrap>
-              <Badge label={place.primaryCategory.name} tone="primary" />
-              <ImportanceBadge score={place.importanceScore} />
-            </Wrap>
-            <Text style={[typography.display, { color: '#FFFFFF', marginTop: spacing.sm }]}>
-              {place.name}
-            </Text>
-            <Text style={[typography.small, { color: '#E4EDE8' }]}>
+            <View style={styles.heroChips}>
+              {place.categories.slice(0, 3).map((category) => (
+                <View
+                  key={category.id}
+                  style={[styles.heroChip, { backgroundColor: withHeroAlpha(category.colorHex, 0.85) }]}
+                >
+                  <Text style={styles.heroChipGlyph}>{categoryGlyph(category.key)}</Text>
+                  <Text style={styles.heroChipLabel}>{category.name}</Text>
+                </View>
+              ))}
+              <View style={styles.heroImportance}>
+                <ImportanceBadge score={place.importanceScore} />
+              </View>
+            </View>
+            <Text style={[typography.display, styles.heroTitle]}>{place.name}</Text>
+            <Text style={styles.heroLocation}>
               📍 {place.city.name}, {place.country.name}
-              {place.distanceMeters !== null ? ` · ${formatDistance(place.distanceMeters)} away` : ''}
+              {place.distanceMeters !== null ? ` · ${formatDistance(place.distanceMeters)}` : ''}
             </Text>
           </View>
 
@@ -137,7 +149,7 @@ export default function PlaceDetail() {
               onPress={toggleSave}
               style={styles.circleButton}
             >
-              <Text style={{ fontSize: 16, color: saved ? colors.danger : colors.text }}>
+              <Text style={{ fontSize: 18, color: saved ? colors.danger : colors.text }}>
                 {saved ? '♥' : '♡'}
               </Text>
             </Pressable>
@@ -248,6 +260,15 @@ export default function PlaceDetail() {
   );
 }
 
+/** Same alpha trick the InterestGrid uses — muted category tint for chips. */
+function withHeroAlpha(hex: string | null | undefined, alpha: number): string {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return `rgba(31,111,84,${alpha})`;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
 function Fact({ glyph, label, value }: { glyph: string; label: string; value: string }) {
   return (
     <View style={styles.fact}>
@@ -265,8 +286,45 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     padding: spacing.lg,
+    paddingBottom: spacing.xl,
+    gap: 6,
+  },
+  heroScrimTop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 120,
+    backgroundColor: 'rgba(10,32,25,0.35)',
+  },
+  heroScrimBottom: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 200,
     backgroundColor: 'rgba(10,32,25,0.55)',
   },
+  heroChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: spacing.sm,
+  },
+  heroChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  heroChipGlyph: { fontSize: 12 },
+  heroChipLabel: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
+  heroImportance: { marginLeft: 4 },
+  heroTitle: { color: '#FFFFFF' },
+  heroLocation: { color: '#E4EDE8', fontSize: 13 },
   heroBack: {
     position: 'absolute',
     top: spacing.xl,
@@ -276,10 +334,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   circleButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.95)',
     alignItems: 'center',
     justifyContent: 'center',
   },
