@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import {
   AppHeader,
   Badge,
@@ -15,6 +16,7 @@ import { colors, radius, spacing, typography } from '../../src/theme';
 
 export default function Profile() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { user, stats, isAdmin, signOut, refresh } = useAuth();
 
   useFocusEffect(
@@ -24,15 +26,15 @@ export default function Profile() {
   );
 
   const rows: Array<{ label: string; glyph: string; href: string }> = [
-    { label: 'Saved places', glyph: '♡', href: '/(tabs)/saved' },
-    { label: 'My trips', glyph: '🧳', href: '/trips' },
-    { label: 'Interests & preferences', glyph: '⚙', href: '/preferences' },
-    { label: 'Settings', glyph: '☰', href: '/settings' },
+    { label: t('tabs.saved'), glyph: '♡', href: '/(tabs)/saved' },
+    { label: t('trips.title'), glyph: '🧳', href: '/trips' },
+    { label: t('profile.preferences'), glyph: '⚙', href: '/preferences' },
+    { label: t('profile.settings'), glyph: '☰', href: '/settings' },
   ];
 
   return (
     <Screen>
-      <AppHeader title="Profile" onBack={false} />
+      <AppHeader title={t('profile.title')} onBack={false} />
 
       <ScrollView contentContainerStyle={styles.body}>
         <View style={styles.identity}>
@@ -52,11 +54,11 @@ export default function Profile() {
         </View>
 
         <Card style={styles.stats}>
-          <Stat value={stats?.trips ?? 0} label="Trips" />
+          <Stat value={stats?.trips ?? 0} label={t('profile.tripCount')} />
           <Divider style={styles.vDivider} />
-          <Stat value={stats?.placesVisited ?? 0} label="Places visited" />
+          <Stat value={stats?.placesVisited ?? 0} label={t('profile.visitedCount')} />
           <Divider style={styles.vDivider} />
-          <Stat value={stats?.savedPlaces ?? 0} label="Saved places" />
+          <Stat value={stats?.savedPlaces ?? 0} label={t('profile.savedCount')} />
         </Card>
 
         <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -79,12 +81,12 @@ export default function Profile() {
 
         {isAdmin ? (
           <Card style={{ backgroundColor: colors.goldSoft, borderColor: colors.goldSoft }}>
-            <Text style={[typography.bodyStrong, { color: colors.warning }]}>Admin console</Text>
+            <Text style={[typography.bodyStrong, { color: colors.warning }]}>{t('profile.adminConsole')}</Text>
             <Text style={[typography.small, { color: colors.warning, marginTop: 4 }]}>
-              Manage places, cities, countries, categories and users.
+              {t('admin.places')} · {t('admin.cities')} · {t('admin.categories')} · {t('admin.users')}
             </Text>
             <Button
-              label="Open admin console"
+              label={t('profile.adminConsole')}
               variant="secondary"
               size="sm"
               style={{ marginTop: spacing.md, alignSelf: 'flex-start' }}
@@ -94,7 +96,7 @@ export default function Profile() {
         ) : null}
 
         <Button
-          label="Log out"
+          label={t('common.signOut')}
           variant="danger"
           onPress={async () => {
             await signOut();

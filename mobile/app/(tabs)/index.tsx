@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { api, resolveBaseUrl } from '../../src/api/client';
 import type { City, Itinerary, Place } from '../../src/api/types';
 import { PatternTile } from '../../src/components/PatternTile';
@@ -26,6 +27,7 @@ import { resolveCurrentLocation } from '../../src/utils/location';
 
 export default function Home() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { user, isAdmin } = useAuth();
   const { draft, setDraft } = usePlan();
 
@@ -57,7 +59,7 @@ export default function Home() {
     } catch {
       // Name the endpoint: on a device the usual cause is a build without
       // EXPO_PUBLIC_API_URL, or an API that is not running.
-      setError(`Could not reach Sufara at ${resolveBaseUrl()}. Pull to try again.`);
+      setError(`${t('errors.network')} (${resolveBaseUrl()})`);
     } finally {
       setLoading(false);
     }
@@ -98,7 +100,7 @@ export default function Home() {
     const resolved = await resolveCurrentLocation({
       latitude: activeCity.latitude,
       longitude: activeCity.longitude,
-      label: `Centre of ${activeCity.name}`,
+      label: activeCity.name,
     });
     if (resolved) {
       setDraft({
@@ -113,24 +115,26 @@ export default function Home() {
     [trips],
   );
 
-  if (loading) return <Loader label="Loading places…" />;
+  if (loading) return <Loader label={t('common.loading')} />;
+
+  const firstName = user?.name.split(' ')[0];
 
   return (
     <Screen>
       <AppHeader
-        title={`As-salamu alaykum, ${user?.name.split(' ')[0] ?? 'traveller'}`}
+        title={firstName ? t('home.greeting', { name: firstName }) : t('home.greetingAnon')}
         // Never state a location the traveller has not confirmed.
         subtitle={
           draft.city
             ? `${draft.city.name}, ${draft.city.country.name}`
-            : 'Where are you travelling today?'
+            : t('home.prompt')
         }
         onBack={false}
         right={
           isAdmin ? (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Open admin console"
+              accessibilityLabel={t('profile.adminConsole')}
               onPress={() => router.push('/admin')}
               hitSlop={8}
             >
@@ -157,21 +161,23 @@ export default function Home() {
         {/* Primary call to action — planning is what the app is for. */}
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Plan my visit"
+          accessibilityLabel={t('home.planVisit')}
           onPress={() => router.push('/planner')}
         >
           <PatternTile seed="plan-cta" tint={colors.primary} height={168} style={{ borderRadius: radius.xl }}>
             <View style={styles.ctaOverlay}>
-              <Text style={[typography.caption, { color: '#D8E6DE' }]}>SMART VISIT PLANNER</Text>
+              <Text style={[typography.caption, { color: '#D8E6DE' }]}>
+                {t('onboarding.feature1Title').toUpperCase()}
+              </Text>
               <Text style={[typography.title, { color: '#FFFFFF', marginTop: 4 }]}>
-                Plan My Visit
+                {t('home.planVisit')}
               </Text>
               <Text style={[typography.small, { color: '#CFE0D8', marginTop: 4, maxWidth: 260 }]}>
-                Tell Sufara how long you have. It builds a route that fits.
+                {t('onboarding.feature1Body')}
               </Text>
               <View style={styles.ctaPill}>
                 <Text style={[typography.small, { color: colors.primaryDark, fontWeight: '700' }]}>
-                  Start planning →
+                  {t('home.planVisit')} →
                 </Text>
               </View>
             </View>
@@ -181,37 +187,37 @@ export default function Home() {
         {activeTrip ? (
           <Card
             onPress={() => router.push(`/trips/${activeTrip.id}`)}
-            accessibilityLabel={`Continue ${activeTrip.title}`}
+            accessibilityLabel={activeTrip.title}
             style={styles.activeTrip}
           >
             <View style={styles.rowBetween}>
-              <Badge label="In progress" tone="primary" />
+              <Badge label={t('trips.resume')} tone="primary" />
               <Text style={[typography.small, { color: colors.textMuted }]}>
-                {activeTrip.stops.filter((stop) => stop.completedAt).length} / {activeTrip.stops.length} done
+                {activeTrip.stops.filter((stop) => stop.completedAt).length} / {activeTrip.stops.length}
               </Text>
             </View>
             <Text style={[typography.heading, { color: colors.text, marginTop: spacing.sm }]}>
               {activeTrip.title}
             </Text>
             <Text style={[typography.small, { color: colors.textMuted }]}>
-              Continue your journey →
+              {t('trips.resume')} →
             </Text>
           </Card>
         ) : null}
 
         <View style={styles.quickActions}>
-          <QuickAction glyph="🗺" label="Explore map" onPress={() => router.push('/(tabs)/explore')} />
-          <QuickAction glyph="♡" label="Saved" onPress={() => router.push('/(tabs)/saved')} />
-          <QuickAction glyph="🧳" label="My trips" onPress={() => router.push('/trips')} />
+          <QuickAction glyph="🗺" label={t('tabs.explore')} onPress={() => router.push('/(tabs)/explore')} />
+          <QuickAction glyph="♡" label={t('tabs.saved')} onPress={() => router.push('/(tabs)/saved')} />
+          <QuickAction glyph="🧳" label={t('trips.title')} onPress={() => router.push('/trips')} />
           <QuickAction
             glyph={locating ? '…' : '📍'}
-            label={draft.start ? 'Location set' : 'Use location'}
+            label={draft.start ? t('planner.usingLocation') : t('home.prompt')}
             onPress={useMyLocation}
           />
         </View>
 
         <View>
-          <SectionTitle title="Where are you?" />
+          <SectionTitle title={t('planner.stepDestination')} />
           <ChipRow>
             {cities.map((city) => (
               <Chip
@@ -226,14 +232,14 @@ export default function Home() {
 
         <View>
           <SectionTitle
-            title={activeCity ? `Highlights of ${activeCity.name}` : 'Highlights'}
-            action="See all"
+            title={activeCity ? `${t('home.nearbyPlaces')} — ${activeCity.name}` : t('home.nearbyPlaces')}
+            action={t('home.seeAll')}
             onAction={() => activeCity && router.push(`/city/${activeCity.id}`)}
           />
           {recommended.length === 0 ? (
             <EmptyState
-              title="No places yet"
-              message="An administrator has not added places for this city yet."
+              title={t('saved.empty')}
+              message={t('planner.noCityAvailable')}
               glyph="🕌"
             />
           ) : (
@@ -247,7 +253,7 @@ export default function Home() {
 
         {trips.length > 0 ? (
           <View>
-            <SectionTitle title="Recent itineraries" action="All trips" onAction={() => router.push('/trips')} />
+            <SectionTitle title={t('home.recentTrips')} action={t('home.seeAll')} onAction={() => router.push('/trips')} />
             <View style={{ gap: spacing.sm }}>
               {trips.slice(0, 3).map((trip) => (
                 <Card
@@ -259,7 +265,7 @@ export default function Home() {
                   <View style={{ flex: 1 }}>
                     <Text style={[typography.bodyStrong, { color: colors.text }]}>{trip.title}</Text>
                     <Text style={[typography.small, { color: colors.textMuted }]}>
-                      {trip.stops.length} places · {formatMinutes(trip.totals.totalMinutes)} ·{' '}
+                      {trip.stops.length} · {formatMinutes(trip.totals.totalMinutes)} ·{' '}
                       {formatDistance(trip.totals.distanceMeters)}
                     </Text>
                   </View>
@@ -272,13 +278,13 @@ export default function Home() {
 
         <Card style={{ backgroundColor: colors.primarySoft, borderColor: colors.primarySoft }}>
           <Text style={[typography.bodyStrong, { color: colors.primaryDark }]}>
-            Already know where you want to go?
+            {t('home.browseCities')}
           </Text>
           <Text style={[typography.small, { color: colors.primary, marginTop: 4 }]}>
-            Add places to My Visit and Sufara will work out the best order.
+            {t('planner.modeIChooseBody')}
           </Text>
           <Button
-            label="Browse places"
+            label={t('saved.browsePlaces')}
             variant="secondary"
             size="sm"
             style={{ marginTop: spacing.md, alignSelf: 'flex-start' }}

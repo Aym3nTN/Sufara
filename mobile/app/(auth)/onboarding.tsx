@@ -1,46 +1,36 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { PatternTile } from '../../src/components/PatternTile';
 import { Button, Screen } from '../../src/components/ui';
+import { LanguagePicker } from '../../src/components/LanguagePicker';
 import { colors, radius, spacing, typography } from '../../src/theme';
-
-const SLIDES = [
-  {
-    glyph: '🕌',
-    title: 'Discover with purpose',
-    body: 'Mosques, sacred places, battle sites and the locations that shaped Islamic history — gathered in one place.',
-    tint: colors.primary,
-  },
-  {
-    glyph: '🧭',
-    title: 'Your journey, made meaningful',
-    body: 'Tell Sufara where you are and how long you have. It builds a realistic route around the time you actually hold.',
-    tint: '#5C6E8A',
-  },
-  {
-    glyph: '📖',
-    title: 'Learn as you travel',
-    body: 'Every place carries its history, its significance and how long a visit genuinely takes.',
-    tint: colors.gold,
-  },
-];
 
 export default function Onboarding() {
   const router = useRouter();
+  const { t } = useTranslation();
   const [index, setIndex] = useState(0);
-  const slide = SLIDES[index]!;
-  const last = index === SLIDES.length - 1;
+
+  const slides = [
+    { glyph: '🕌', titleKey: 'onboarding.feature1Title', bodyKey: 'onboarding.feature1Body', tint: colors.primary },
+    { glyph: '🧭', titleKey: 'onboarding.feature2Title', bodyKey: 'onboarding.feature2Body', tint: '#5C6E8A' },
+    { glyph: '📖', titleKey: 'onboarding.feature3Title', bodyKey: 'onboarding.feature3Body', tint: colors.gold },
+  ] as const;
+
+  const slide = slides[index]!;
+  const last = index === slides.length - 1;
 
   return (
     <Screen>
       <View style={styles.top}>
+        <LanguagePicker compact />
         <Pressable
           accessibilityRole="button"
           onPress={() => router.replace('/(auth)/login')}
           hitSlop={10}
         >
-          <Text style={[typography.bodyStrong, { color: colors.textMuted }]}>Skip</Text>
+          <Text style={[typography.bodyStrong, { color: colors.textMuted }]}>{t('common.next')}</Text>
         </Pressable>
       </View>
 
@@ -54,12 +44,12 @@ export default function Onboarding() {
         />
 
         <Text style={[typography.display, { color: colors.text, marginTop: spacing.xl }]}>
-          {slide.title}
+          {t(slide.titleKey)}
         </Text>
-        <Text style={[typography.body, styles.slideBody]}>{slide.body}</Text>
+        <Text style={[typography.body, styles.slideBody]}>{t(slide.bodyKey)}</Text>
 
         <View style={styles.dots}>
-          {SLIDES.map((_, dot) => (
+          {slides.map((_, dot) => (
             <View key={dot} style={[styles.dot, dot === index && styles.dotActive]} />
           ))}
         </View>
@@ -67,7 +57,7 @@ export default function Onboarding() {
 
       <View style={styles.footer}>
         <Button
-          label={last ? 'Get Started' : 'Next'}
+          label={last ? t('onboarding.getStarted') : t('common.next')}
           size="lg"
           onPress={() => (last ? router.replace('/(auth)/login') : setIndex(index + 1))}
         />
@@ -77,7 +67,14 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  top: { alignItems: 'flex-end', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  top: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    gap: spacing.md,
+  },
   body: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   slideBody: { color: colors.textMuted, marginTop: spacing.md, lineHeight: 22 },
   dots: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.xl },

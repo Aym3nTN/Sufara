@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { api, ApiError, resolveBaseUrl } from '../src/api/client';
 import {
   AppHeader,
@@ -11,11 +12,13 @@ import {
   Notice,
   Screen,
 } from '../src/components/ui';
+import { LanguagePicker } from '../src/components/LanguagePicker';
 import { useAuth } from '../src/state/auth';
 import { colors, spacing, typography } from '../src/theme';
 
 export default function Settings() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { user, signOut, refresh } = useAuth();
 
   const [name, setName] = useState(user?.name ?? '');
@@ -36,9 +39,9 @@ export default function Settings() {
     try {
       await api.me.update({ name: name.trim() });
       await refresh();
-      setMessage('Profile updated.');
+      setMessage(t('settings.profileUpdated'));
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Could not update your profile.');
+      setError(caught instanceof ApiError ? caught.message : t('settings.profileUpdateFailed'));
     } finally {
       setBusy(false);
     }
@@ -52,9 +55,9 @@ export default function Settings() {
       await api.me.changePassword({ currentPassword, newPassword });
       setCurrentPassword('');
       setNewPassword('');
-      setMessage('Password changed. Other devices have been signed out.');
+      setMessage(t('settings.passwordChanged'));
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : 'Could not change your password.');
+      setError(caught instanceof ApiError ? caught.message : t('settings.passwordChangeFailed'));
     } finally {
       setBusy(false);
     }
@@ -62,33 +65,33 @@ export default function Settings() {
 
   return (
     <Screen>
-      <AppHeader title="Settings" />
+      <AppHeader title={t('settings.title')} />
 
       <ScrollView contentContainerStyle={styles.body}>
         <Card style={{ gap: spacing.lg }}>
-          <Text style={[typography.heading, { color: colors.text }]}>Account</Text>
-          <Field label="Name" value={name} onChangeText={setName} autoCapitalize="words" />
-          <Field label="Email" value={user?.email ?? ''} onChangeText={() => undefined} hint="Email cannot be changed here." />
-          <Button label="Save profile" size="sm" loading={busy} onPress={saveProfile} />
+          <Text style={[typography.heading, { color: colors.text }]}>{t('settings.account')}</Text>
+          <Field label={t('settings.nameLabel')} value={name} onChangeText={setName} autoCapitalize="words" />
+          <Field label={t('settings.emailLabel')} value={user?.email ?? ''} onChangeText={() => undefined} hint={t('settings.emailImmutable')} />
+          <Button label={t('settings.saveProfile')} size="sm" loading={busy} onPress={saveProfile} />
         </Card>
 
         <Card style={{ gap: spacing.lg }}>
-          <Text style={[typography.heading, { color: colors.text }]}>Change password</Text>
+          <Text style={[typography.heading, { color: colors.text }]}>{t('settings.changePassword')}</Text>
           <Field
-            label="Current password"
+            label={t('settings.currentPassword')}
             value={currentPassword}
             onChangeText={setCurrentPassword}
             secureTextEntry
           />
           <Field
-            label="New password"
+            label={t('settings.newPassword')}
             value={newPassword}
             onChangeText={setNewPassword}
             secureTextEntry
-            hint="At least 8 characters."
+            hint={t('settings.newPasswordHint')}
           />
           <Button
-            label="Update password"
+            label={t('settings.updatePassword')}
             size="sm"
             variant="secondary"
             loading={busy}
@@ -97,46 +100,51 @@ export default function Settings() {
           />
         </Card>
 
+        <View style={{ gap: spacing.sm }}>
+          <Text style={[typography.caption, { color: colors.textMuted, marginLeft: spacing.md }]}>
+            {t('settings.language').toUpperCase()}
+          </Text>
+          <LanguagePicker />
+        </View>
+
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <Toggle
-            label="Notifications"
-            hint="Reminders about your upcoming visits"
+            label={t('settings.notifications')}
+            hint={t('settings.notificationsHint')}
             value={notifications}
             onChange={setNotifications}
           />
           <Divider />
           <Toggle
-            label="Metric units"
-            hint={metric ? 'Distances in kilometres' : 'Distances in miles'}
+            label={t('settings.metricUnits')}
+            hint={metric ? t('settings.distancesKm') : t('settings.distancesMi')}
             value={metric}
             onChange={setMetric}
           />
           <Divider />
-          <Row label="Language" value="English" />
-          <Divider />
-          <Row label="Map & navigation" value="Interests & preferences" onPress={() => router.push('/preferences')} />
+          <Row label={t('settings.mapNav')} value={t('settings.mapNavValue')} onPress={() => router.push('/preferences')} />
           <Divider />
           <Row
-            label="Location permission"
-            value={Platform.OS === 'web' ? 'Browser controlled' : 'Asked when planning'}
+            label={t('settings.locationPermission')}
+            value={Platform.OS === 'web' ? t('settings.locationBrowser') : t('settings.locationAsked')}
           />
         </Card>
 
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <Row label="Privacy" value="Your trips stay on your account" />
+          <Row label={t('settings.privacy')} value={t('settings.privacyValue')} />
           <Divider />
-          <Row label="Help & support" value="support@sufara.app" />
+          <Row label={t('settings.helpSupport')} value="support@sufara.app" />
           <Divider />
-          <Row label="API endpoint" value={resolveBaseUrl()} />
+          <Row label={t('settings.apiEndpoint')} value={resolveBaseUrl()} />
           <Divider />
-          <Row label="About Sufara" value="Version 1.0.0 (MVP)" />
+          <Row label={t('settings.about')} value={t('settings.version')} />
         </Card>
 
         {message ? <Notice tone="primary">{message}</Notice> : null}
         {error ? <Notice tone="danger">{error}</Notice> : null}
 
         <Button
-          label="Log out"
+          label={t('settings.signOut')}
           variant="danger"
           onPress={async () => {
             await signOut();

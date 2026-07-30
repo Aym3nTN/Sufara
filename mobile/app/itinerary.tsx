@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { api, ApiError } from '../src/api/client';
 import { PlaceArtwork } from '../src/components/PlaceCard';
 import {
@@ -24,6 +25,7 @@ import { clockAfter, formatDistance, formatMinutes } from '../src/utils/format';
  */
 export default function ItineraryScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { plan, setPlan, draft, planning, generate, previewOrder } = usePlan();
 
   const [saving, setSaving] = useState(false);
@@ -33,11 +35,11 @@ export default function ItineraryScreen() {
   if (!plan) {
     return (
       <Screen>
-        <AppHeader title="Your itinerary" />
+        <AppHeader title={t('itinerary.title')} />
         <EmptyState
-          title="No itinerary yet"
-          message="Plan a visit and your route will appear here."
-          action="Plan my visit"
+          title={t('planner.planEmpty')}
+          message={t('planner.generating')}
+          action={t('home.planVisit')}
           onAction={() => router.replace('/planner')}
           glyph="✦"
         />
@@ -70,7 +72,7 @@ export default function ItineraryScreen() {
     setSaving(true);
     setSaveError(null);
     try {
-      const cityName = plan.stops[0]?.place.city.name ?? 'Visit';
+      const cityName = plan.stops[0]?.place.city.name ?? t('planner.title');
       const result = await api.itineraries.create({
         title: `${cityName} — ${formatMinutes(plan.availableMinutes)}`,
         cityId: plan.cityId ?? undefined,
@@ -94,7 +96,7 @@ export default function ItineraryScreen() {
       });
       router.replace(`/trips/${result.itinerary.id}`);
     } catch (caught) {
-      setSaveError(caught instanceof ApiError ? caught.message : 'Could not save this itinerary.');
+      setSaveError(caught instanceof ApiError ? caught.message : t('errors.generic'));
     } finally {
       setSaving(false);
     }
@@ -103,26 +105,28 @@ export default function ItineraryScreen() {
   return (
     <Screen>
       <AppHeader
-        title="Your itinerary"
-        subtitle={`${plan.stops.length} stops · ${plan.stops[0]?.place.city.name ?? ''}`}
+        title={t('itinerary.title')}
+        subtitle={`${plan.stops.length} · ${plan.stops[0]?.place.city.name ?? ''}`}
         onBack={() => router.replace('/(tabs)')}
         right={
           <Pressable accessibilityRole="button" onPress={() => void generate()} hitSlop={8}>
-            <Text style={[typography.small, { color: colors.primary, fontWeight: '700' }]}>Redo</Text>
+            <Text style={[typography.small, { color: colors.primary, fontWeight: '700' }]}>
+              {t('planner.regenerate')}
+            </Text>
           </Pressable>
         }
       />
 
       <ScrollView contentContainerStyle={styles.body}>
         <Card style={styles.totals}>
-          <Total label="Total time" value={formatMinutes(plan.totals.totalMinutes)} emphasis />
+          <Total label={t('itinerary.totalTime')} value={formatMinutes(plan.totals.totalMinutes)} emphasis />
           <Divider style={styles.vDivider} />
-          <Total label="Visiting" value={formatMinutes(plan.totals.visitMinutes)} />
+          <Total label={t('itinerary.visitTime')} value={formatMinutes(plan.totals.visitMinutes)} />
           <Divider style={styles.vDivider} />
-          <Total label="Travelling" value={formatMinutes(plan.totals.travelMinutes)} />
+          <Total label={t('itinerary.travelBy')} value={formatMinutes(plan.totals.travelMinutes)} />
           <Divider style={styles.vDivider} />
           <Total
-            label={over ? 'Over' : 'Buffer'}
+            label={t('itinerary.bufferTime')}
             value={formatMinutes(Math.abs(plan.totals.bufferMinutes))}
             tone={over ? 'danger' : 'primary'}
           />
@@ -137,14 +141,14 @@ export default function ItineraryScreen() {
         {over ? (
           <View style={styles.overActions}>
             <Button
-              label="Optimise again"
+              label={t('itinerary.optimize')}
               size="sm"
               variant="secondary"
               loading={planning}
               onPress={() => void generate()}
             />
             <Button
-              label="Remove last stop"
+              label={t('common.remove')}
               size="sm"
               variant="danger"
               onPress={() => {
@@ -162,7 +166,7 @@ export default function ItineraryScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[typography.bodyStrong, { color: colors.text }]}>{plan.start.label}</Text>
               <Text style={[typography.small, { color: colors.textMuted }]}>
-                Departing {clockAfter(0)}
+                {t('itinerary.startFrom')} · {clockAfter(0)}
               </Text>
             </View>
           </View>
@@ -173,7 +177,7 @@ export default function ItineraryScreen() {
                 <View style={styles.legLine} />
                 <Text style={[typography.small, { color: colors.textMuted }]}>
                   ↓ {formatMinutes(stop.travelTimeFromPreviousMinutes)}{' '}
-                  {plan.travelMode === 'WALKING' ? 'walk' : 'drive'} ·{' '}
+                  {plan.travelMode === 'WALKING' ? t('itinerary.walk') : t('itinerary.drive')} ·{' '}
                   {formatDistance(stop.distanceFromPreviousMeters)}
                 </Text>
               </View>
@@ -204,8 +208,8 @@ export default function ItineraryScreen() {
                 </View>
 
                 <View style={styles.stopMeta}>
-                  <Badge label={`Visit ${formatMinutes(stop.estimatedVisitDurationMinutes)}`} tone="primary" />
-                  <Badge label={`Arrive ${clockAfter(stop.estimatedArrivalOffsetMinutes)}`} />
+                  <Badge label={`${t('common.min')} ${formatMinutes(stop.estimatedVisitDurationMinutes)}`} tone="primary" />
+                  <Badge label={`${t('itinerary.arriveAt')} ${clockAfter(stop.estimatedArrivalOffsetMinutes)}`} />
                 </View>
 
                 <View style={styles.stopActions}>
@@ -226,10 +230,10 @@ export default function ItineraryScreen() {
                     onPress={() => void moveStop(index, 1)}
                   />
                   <Text style={[typography.small, { color: colors.textFaint, flex: 1 }]}>
-                    Reorder
+                    {t('itinerary.reorderStops')}
                   </Text>
                   <Button
-                    label="Remove"
+                    label={t('common.remove')}
                     variant="danger"
                     size="sm"
                     onPress={() => void removeStop(stop.place.id)}
@@ -247,7 +251,7 @@ export default function ItineraryScreen() {
             onPress={() => setShowReasons(!showReasons)}
             style={styles.rowBetween}
           >
-            <Text style={[typography.bodyStrong, { color: colors.text }]}>Why these places?</Text>
+            <Text style={[typography.bodyStrong, { color: colors.text }]}>{t('planner.chosenPlaces')}</Text>
             <Text style={{ color: colors.textFaint, fontSize: 18 }}>{showReasons ? '⌃' : '⌄'}</Text>
           </Pressable>
 
@@ -261,15 +265,12 @@ export default function ItineraryScreen() {
               {plan.dropped.length > 0 ? (
                 <>
                   <Divider style={{ marginVertical: spacing.sm }} />
-                  <Text style={[typography.caption, { color: colors.textFaint }]}>LEFT OUT</Text>
+                  <Text style={[typography.caption, { color: colors.textFaint }]}>
+                    {t('planner.droppedNotice').toUpperCase()}
+                  </Text>
                   {plan.dropped.slice(0, 5).map((entry) => (
                     <Text key={entry.placeId} style={[typography.small, { color: colors.textMuted }]}>
-                      • {entry.name} —{' '}
-                      {entry.reason === 'NO_TIME'
-                        ? 'would not fit your available time'
-                        : entry.reason === 'CLOSED'
-                          ? 'closed at that time'
-                          : 'too far for your travel mode'}
+                      • {entry.name}
                     </Text>
                   ))}
                 </>
@@ -279,8 +280,8 @@ export default function ItineraryScreen() {
         </Card>
 
         <View style={{ gap: spacing.sm }}>
-          <Button label="Change available time" variant="secondary" onPress={() => router.push('/planner')} />
-          <Button label="Add another place" variant="secondary" onPress={() => router.push('/(tabs)/explore')} />
+          <Button label={t('planner.title')} variant="secondary" onPress={() => router.push('/planner')} />
+          <Button label={t('planner.addPlace')} variant="secondary" onPress={() => router.push('/(tabs)/explore')} />
         </View>
 
         {saveError ? <Notice tone="danger">{saveError}</Notice> : null}
@@ -288,13 +289,13 @@ export default function ItineraryScreen() {
 
       <View style={styles.footer}>
         <Button
-          label="View on map"
+          label={t('itinerary.viewOnMap')}
           variant="secondary"
           style={{ flex: 1 }}
           onPress={() => router.push('/route-map')}
         />
         <Button
-          label="Save & start"
+          label={t('itinerary.saveTrip')}
           style={{ flex: 1 }}
           loading={saving}
           disabled={plan.stops.length === 0}

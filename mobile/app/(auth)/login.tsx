@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/api/client';
 import { Button, Field, Notice, Screen } from '../../src/components/ui';
+import { LanguagePicker } from '../../src/components/LanguagePicker';
 import { useAuth } from '../../src/state/auth';
 import { colors, spacing, typography } from '../../src/theme';
 
 export default function Login() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { signIn, busy } = useAuth();
 
   // Never prefill credentials: a password here ships inside the app bundle.
@@ -24,7 +27,7 @@ export default function Login() {
       setError(
         caught instanceof ApiError
           ? caught.message
-          : 'Could not reach Sufara. Check your connection and try again.',
+          : t('errors.network'),
       );
     }
   };
@@ -35,24 +38,27 @@ export default function Login() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
+        <View style={styles.topBar}>
+          <LanguagePicker compact />
+        </View>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Text style={styles.mark}>✦</Text>
-          <Text style={[typography.display, { color: colors.text }]}>Welcome back</Text>
+          <Text style={[typography.display, { color: colors.text }]}>{t('auth.signInSubtitle')}</Text>
           <Text style={[typography.body, { color: colors.textMuted, marginTop: 6 }]}>
-            Sign in to continue your journey.
+            {t('auth.signInTitle')}
           </Text>
 
           <View style={styles.form}>
             <Field
-              label="Email"
+              label={t('auth.email')}
               value={email}
               onChangeText={setEmail}
-              placeholder="you@example.com"
+              placeholder={t('auth.emailPlaceholder')}
               keyboardType="email-address"
               testID="login-email"
             />
             <Field
-              label="Password"
+              label={t('auth.password')}
               value={password}
               onChangeText={setPassword}
               placeholder="••••••••"
@@ -67,32 +73,25 @@ export default function Login() {
               hitSlop={8}
             >
               <Text style={[typography.small, { color: colors.primary, fontWeight: '600' }]}>
-                Forgot password?
+                {t('auth.forgotPassword')}
               </Text>
             </Pressable>
 
             {error ? <Notice tone="danger">{error}</Notice> : null}
 
-            <Button label="Log in" size="lg" onPress={submit} loading={busy} />
+            <Button label={t('auth.signInAction')} size="lg" onPress={submit} loading={busy} />
           </View>
 
           <View style={styles.footer}>
             <Text style={[typography.small, { color: colors.textMuted }]}>
-              Don’t have an account?{' '}
+              {t('auth.noAccount')}{' '}
             </Text>
             <Pressable accessibilityRole="button" onPress={() => router.push('/(auth)/register')}>
               <Text style={[typography.small, { color: colors.primary, fontWeight: '700' }]}>
-                Sign up
+                {t('auth.register')}
               </Text>
             </Pressable>
           </View>
-
-          {__DEV__ ? (
-            <Notice tone="primary">
-              Demo accounts: traveler@sufara.app and admin@sufara.app. The seed prints their
-              password once when it creates them — or set SEED_PASSWORD before seeding.
-            </Notice>
-          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
@@ -100,7 +99,13 @@ export default function Login() {
 }
 
 const styles = StyleSheet.create({
-  body: { padding: spacing.lg, paddingTop: spacing.xxl, gap: 0 },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  body: { padding: spacing.lg, paddingTop: spacing.lg, gap: 0 },
   mark: { fontSize: 34, color: colors.gold, marginBottom: spacing.lg },
   form: { gap: spacing.lg, marginTop: spacing.xl },
   footer: {

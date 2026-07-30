@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { api } from '../../src/api/client';
 import type { Itinerary } from '../../src/api/types';
 import { PlaceArtwork } from '../../src/components/PlaceCard';
@@ -24,6 +25,7 @@ import { formatDistance, formatMinutes } from '../../src/utils/format';
  */
 export default function Journey() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { basket, removeFromBasket, reorderBasket, clearBasket, optimizeBasket, planning, planError } =
     usePlan();
 
@@ -53,13 +55,15 @@ export default function Journey() {
   return (
     <Screen>
       <AppHeader
-        title="My Visit"
-        subtitle={basket.length > 0 ? `${basket.length} places selected` : undefined}
+        title={t('tabs.journey')}
+        subtitle={basket.length > 0 ? `${basket.length}` : undefined}
         onBack={false}
         right={
           basket.length > 0 ? (
             <Pressable accessibilityRole="button" onPress={clearBasket} hitSlop={8}>
-              <Text style={[typography.small, { color: colors.danger, fontWeight: '600' }]}>Clear</Text>
+              <Text style={[typography.small, { color: colors.danger, fontWeight: '600' }]}>
+                {t('common.remove')}
+              </Text>
             </Pressable>
           ) : null
         }
@@ -68,19 +72,19 @@ export default function Journey() {
       <ScrollView contentContainerStyle={styles.body}>
         {active ? (
           <View>
-            <SectionTitle title="Journey in progress" />
+            <SectionTitle title={t('trips.resume')} />
             <Card>
               <View style={styles.rowBetween}>
-                <Badge label="In progress" tone="primary" />
+                <Badge label={t('trips.resume')} tone="primary" />
                 <Text style={[typography.small, { color: colors.textMuted }]}>
-                  {active.stops.filter((stop) => stop.completedAt).length} / {active.stops.length} completed
+                  {active.stops.filter((stop) => stop.completedAt).length} / {active.stops.length}
                 </Text>
               </View>
               <Text style={[typography.heading, { color: colors.text, marginTop: spacing.sm }]}>
                 {active.title}
               </Text>
               <Button
-                label="Continue journey"
+                label={t('trips.resume')}
                 size="sm"
                 style={{ marginTop: spacing.md, alignSelf: 'flex-start' }}
                 onPress={() => router.push(`/trips/${active.id}`)}
@@ -90,13 +94,13 @@ export default function Journey() {
         ) : null}
 
         <View>
-          <SectionTitle title="Places you chose" />
+          <SectionTitle title={t('planner.chosenPlaces')} />
 
           {basket.length === 0 ? (
             <EmptyState
-              title="Nothing selected yet"
-              message="Add places from the map or a city list, then Sufara will work out the most efficient order to visit them."
-              action="Browse the map"
+              title={t('saved.empty')}
+              message={t('planner.modeIChooseBody')}
+              action={t('saved.browsePlaces')}
               onAction={() => router.push('/(tabs)/explore')}
               glyph="⚑"
             />
@@ -158,27 +162,27 @@ export default function Journey() {
           <>
             <Card style={{ backgroundColor: colors.surfaceMuted }}>
               <Text style={[typography.small, { color: colors.textMuted }]}>
-                Visit time for these places
+                {t('itinerary.visitTime')}
               </Text>
               <Text style={[typography.title, { color: colors.text, marginTop: 2 }]}>
                 {formatMinutes(totalVisitMinutes)}
               </Text>
               <Text style={[typography.small, { color: colors.textFaint, marginTop: 4 }]}>
-                Travel time is added when Sufara optimises the route.
+                {t('itinerary.travelBy')} · {t('itinerary.optimize')}
               </Text>
             </Card>
 
             {planError ? <Notice tone="danger">{planError}</Notice> : null}
 
             <Button
-              label="Optimise route"
+              label={t('itinerary.optimize')}
               size="lg"
               icon="✦"
               loading={planning}
               onPress={optimise}
             />
             <Button
-              label="Add more places"
+              label={t('planner.addPlace')}
               variant="secondary"
               onPress={() => router.push('/(tabs)/explore')}
             />

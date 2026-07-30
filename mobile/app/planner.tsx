@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { api } from '../src/api/client';
 import type { Category, City } from '../src/api/types';
 import { MapCanvas } from '../src/components/map';
@@ -21,10 +22,11 @@ import { colors, radius, spacing, typography } from '../src/theme';
 import { categoryGlyph, formatMinutes, TIME_PRESETS } from '../src/utils/format';
 import { resolveCurrentLocation } from '../src/utils/location';
 
-const STEPS = ['Destination', 'Time', 'Starting point', 'Interests', 'Travel', 'Review'] as const;
+const STEP_COUNT = 6;
 
 export default function Planner() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { preferences } = useAuth();
   const { draft, setDraft, generate, planning, planError } = usePlan();
 
@@ -35,6 +37,15 @@ export default function Planner() {
   const [customMinutes, setCustomMinutes] = useState('');
   const [locating, setLocating] = useState(false);
   const [locationNote, setLocationNote] = useState<string | null>(null);
+
+  const stepLabels = [
+    t('planner.stepDestination'),
+    t('planner.stepTime'),
+    t('planner.usingLocation'),
+    t('planner.stepInterests'),
+    t('itinerary.travelBy'),
+    t('planner.stepReview'),
+  ];
 
   useEffect(() => {
     (async () => {
@@ -80,7 +91,7 @@ export default function Planner() {
     const resolved = await resolveCurrentLocation({
       latitude: draft.city.latitude,
       longitude: draft.city.longitude,
-      label: `Centre of ${draft.city.name}`,
+      label: draft.city.name,
     });
 
     if (resolved) {
@@ -88,9 +99,7 @@ export default function Planner() {
         start: { latitude: resolved.latitude, longitude: resolved.longitude, label: resolved.label },
       });
       if (!resolved.precise) {
-        setLocationNote(
-          'Location permission was not granted, so planning starts from the city centre. You can drop a pin instead.',
-        );
+        setLocationNote(t('planner.usingLocation'));
       }
     }
     setLocating(false);
@@ -101,20 +110,20 @@ export default function Planner() {
     if (plan) router.replace('/itinerary');
   };
 
-  if (loading) return <Loader label="Preparing the planner…" />;
+  if (loading) return <Loader label={t('common.loading')} />;
 
   return (
     <Screen>
       <AppHeader
-        title="Plan your visit"
-        subtitle={`Step ${step + 1} of ${STEPS.length} · ${STEPS[step]}`}
+        title={t('planner.title')}
+        subtitle={`${step + 1} / ${STEP_COUNT} · ${stepLabels[step]}`}
         onBack={() => (step === 0 ? router.back() : setStep(step - 1))}
       />
 
       <View style={styles.progress}>
-        {STEPS.map((label, index) => (
+        {Array.from({ length: STEP_COUNT }, (_, index) => (
           <View
-            key={label}
+            key={index}
             style={[
               styles.progressSegment,
               index <= step && { backgroundColor: colors.primary },
@@ -127,8 +136,8 @@ export default function Planner() {
         {step === 0 ? (
           <>
             <StepHeading
-              title="Where would you like to go?"
-              hint="Choose the city you are visiting."
+              title={t('planner.chooseCity')}
+              hint={t('planner.chooseCityHint')}
             />
             <View style={{ gap: spacing.sm }}>
               {cities.map((city) => (
@@ -144,7 +153,7 @@ export default function Planner() {
                   <View style={{ flex: 1 }}>
                     <Text style={[typography.bodyStrong, { color: colors.text }]}>{city.name}</Text>
                     <Text style={[typography.small, { color: colors.textMuted }]}>
-                      {city.country.name} · {city.placeCount} places
+                      {city.country.name} · {city.placeCount}
                     </Text>
                   </View>
                   {draft.city?.id === city.id ? (
@@ -159,8 +168,8 @@ export default function Planner() {
         {step === 1 ? (
           <>
             <StepHeading
-              title="How much time do you have?"
-              hint="Sufara keeps a buffer so a small delay does not break your schedule."
+              title={t('planner.stepTime')}
+              hint={t('planner.interestsHint')}
             />
             <Wrap>
               {TIME_PRESETS.map((preset) => (
@@ -178,7 +187,7 @@ export default function Planner() {
 
             <Card style={{ gap: spacing.md }}>
               <Field
-                label="Custom (minutes)"
+                label={t('planner.availableTime')}
                 value={customMinutes}
                 onChangeText={(text) => {
                   const digits = text.replace(/[^0-9]/g, '');
@@ -186,12 +195,12 @@ export default function Planner() {
                   const minutes = Number(digits);
                   if (minutes >= 15 && minutes <= 960) setDraft({ availableMinutes: minutes });
                 }}
-                placeholder="e.g. 150"
+                placeholder="150"
                 keyboardType="numeric"
-                hint="Between 15 minutes and 16 hours."
+                hint={t('planner.invalidTime')}
               />
               <Text style={[typography.small, { color: colors.textMuted }]}>
-                Planning for {formatMinutes(draft.availableMinutes)}
+                {formatMinutes(draft.availableMinutes)}
               </Text>
             </Card>
           </>
@@ -200,18 +209,18 @@ export default function Planner() {
         {step === 2 ? (
           <>
             <StepHeading
-              title="Where are you starting from?"
-              hint="Use your location, or drop a pin on the map."
+              title={t('planner.stepDestination')}
+              hint={t('planner.usingLocation')}
             />
 
             <Button
-              label={locating ? 'Finding you…' : 'Use my current location'}
+              label={locating ? t('common.loading') : t('planner.usingLocation')}
               icon="📍"
               onPress={useMyLocation}
               loading={locating}
             />
             <Button
-              label="Start from the city centre"
+              label={draft.city ? draft.city.name : t('planner.chooseCity')}
               variant="secondary"
               onPress={() =>
                 draft.city &&
@@ -219,7 +228,7 @@ export default function Planner() {
                   start: {
                     latitude: draft.city.latitude,
                     longitude: draft.city.longitude,
-                    label: `Centre of ${draft.city.name}`,
+                    label: draft.city.name,
                   },
                 })
               }
@@ -230,7 +239,7 @@ export default function Planner() {
             {draft.city ? (
               <Card style={{ gap: spacing.sm }}>
                 <Text style={[typography.caption, { color: colors.textMuted }]}>
-                  OR TAP THE MAP TO DROP A PIN
+                  {t('itinerary.viewOnMap').toUpperCase()}
                 </Text>
                 <MapCanvas
                   height={230}
@@ -261,13 +270,12 @@ export default function Planner() {
                         ]
                   }
                   onMapPress={(coordinate) =>
-                    setDraft({ start: { ...coordinate, label: 'Pin on the map' } })
+                    setDraft({ start: { ...coordinate, label: t('itinerary.startFrom') } })
                   }
                 />
                 {draft.start ? (
                   <Text style={[typography.small, { color: colors.primary }]}>
-                    Starting at {draft.start.label} ({draft.start.latitude.toFixed(4)},{' '}
-                    {draft.start.longitude.toFixed(4)})
+                    {t('itinerary.startFrom')}: {draft.start.label}
                   </Text>
                 ) : null}
               </Card>
@@ -278,8 +286,8 @@ export default function Planner() {
         {step === 3 ? (
           <>
             <StepHeading
-              title="What would you like to explore?"
-              hint="Interests guide the choice. Nothing is excluded outright."
+              title={t('planner.chooseInterests')}
+              hint={t('planner.interestsHint')}
             />
             <Wrap>
               {categories.map((category) => {
@@ -303,25 +311,23 @@ export default function Planner() {
               })}
             </Wrap>
             {draft.interestCategoryIds.length === 0 ? (
-              <Notice tone="primary">
-                With nothing selected, Sufara recommends the most significant places overall.
-              </Notice>
+              <Notice tone="primary">{t('planner.interestsHint')}</Notice>
             ) : null}
           </>
         ) : null}
 
         {step === 4 ? (
           <>
-            <StepHeading title="How will you travel?" hint="This changes the travel times used." />
+            <StepHeading title={t('itinerary.travelBy')} hint={t('planner.interestsHint')} />
             <Wrap>
               <Chip
-                label="Walking"
+                label={t('itinerary.walk')}
                 glyph="🚶"
                 selected={draft.travelMode === 'WALKING'}
                 onPress={() => setDraft({ travelMode: 'WALKING' })}
               />
               <Chip
-                label="Driving"
+                label={t('itinerary.drive')}
                 glyph="🚗"
                 selected={draft.travelMode === 'DRIVING'}
                 onPress={() => setDraft({ travelMode: 'DRIVING' })}
@@ -330,17 +336,19 @@ export default function Planner() {
 
             {draft.travelMode === 'WALKING' ? (
               <Card style={{ gap: spacing.md }}>
-                <Text style={[typography.bodyStrong, { color: colors.text }]}>Walking tolerance</Text>
+                <Text style={[typography.bodyStrong, { color: colors.text }]}>
+                  {t('preferences.walkingTolerance')}
+                </Text>
                 <Wrap>
                   {(['LOW', 'MEDIUM', 'HIGH'] as const).map((tolerance) => (
                     <Chip
                       key={tolerance}
                       label={
                         tolerance === 'LOW'
-                          ? 'Low · up to 1.2 km'
+                          ? '1.2 km'
                           : tolerance === 'MEDIUM'
-                            ? 'Medium · up to 2.5 km'
-                            : 'High · up to 5 km'
+                            ? '2.5 km'
+                            : '5 km'
                       }
                       selected={draft.walkingTolerance === tolerance}
                       onPress={() => setDraft({ walkingTolerance: tolerance })}
@@ -348,23 +356,23 @@ export default function Planner() {
                   ))}
                 </Wrap>
                 <Text style={[typography.small, { color: colors.textFaint }]}>
-                  Sufara will not put a stop farther than this on foot.
+                  {t('preferences.walkingHint')}
                 </Text>
               </Card>
             ) : null}
 
             <Card style={{ gap: spacing.md }}>
-              <Text style={[typography.bodyStrong, { color: colors.text }]}>Maximum stops</Text>
+              <Text style={[typography.bodyStrong, { color: colors.text }]}>{t('common.stops')}</Text>
               <Wrap>
                 <Chip
-                  label="No limit"
+                  label={t('common.notSet')}
                   selected={draft.maxPlaces === undefined}
                   onPress={() => setDraft({ maxPlaces: undefined })}
                 />
                 {[2, 3, 4, 5, 6].map((count) => (
                   <Chip
                     key={count}
-                    label={`${count} places`}
+                    label={`${count}`}
                     selected={draft.maxPlaces === count}
                     onPress={() => setDraft({ maxPlaces: count })}
                   />
@@ -377,38 +385,42 @@ export default function Planner() {
         {step === 5 ? (
           <>
             <StepHeading
-              title={`Let’s plan your ${formatMinutes(draft.availableMinutes)} in ${draft.city?.name ?? ''}`}
-              hint="Check the details, then Sufara builds the route."
+              title={t('planner.stepReview')}
+              hint={t('planner.interestsHint')}
             />
 
             <Card style={{ gap: 0, padding: 0, overflow: 'hidden' }}>
-              <ReviewRow label="Destination" value={draft.city?.name ?? '—'} onEdit={() => setStep(0)} />
+              <ReviewRow label={t('planner.chooseCity')} value={draft.city?.name ?? '—'} onEdit={() => setStep(0)} editLabel={t('common.edit')} />
               <ReviewRow
-                label="Available time"
+                label={t('planner.availableTime')}
                 value={formatMinutes(draft.availableMinutes)}
                 onEdit={() => setStep(1)}
+                editLabel={t('common.edit')}
               />
               <ReviewRow
-                label="Starting point"
-                value={draft.start?.label ?? 'Not set'}
+                label={t('itinerary.startFrom')}
+                value={draft.start?.label ?? t('common.notSet')}
                 onEdit={() => setStep(2)}
+                editLabel={t('common.edit')}
               />
               <ReviewRow
-                label="Interests"
+                label={t('preferences.interests')}
                 value={
                   draft.interestCategoryIds.length === 0
-                    ? 'Most significant places'
+                    ? t('common.notSet')
                     : categories
                         .filter((category) => draft.interestCategoryIds.includes(category.id))
                         .map((category) => category.name)
                         .join(', ')
                 }
                 onEdit={() => setStep(3)}
+                editLabel={t('common.edit')}
               />
               <ReviewRow
-                label="Travel mode"
-                value={draft.travelMode === 'WALKING' ? 'Walking' : 'Driving'}
+                label={t('itinerary.travelBy')}
+                value={draft.travelMode === 'WALKING' ? t('itinerary.walk') : t('itinerary.drive')}
                 onEdit={() => setStep(4)}
+                editLabel={t('common.edit')}
                 last
               />
             </Card>
@@ -416,17 +428,16 @@ export default function Planner() {
             {planError ? <Notice tone="danger">{planError}</Notice> : null}
 
             <Text style={[typography.small, { color: colors.textMuted, textAlign: 'center' }]}>
-              Sufara weighs each place’s significance, your interests, travel time and how long a
-              visit really takes — then keeps a buffer.
+              {t('planner.generating')}
             </Text>
           </>
         ) : null}
       </ScrollView>
 
       <View style={styles.footer}>
-        {step === STEPS.length - 1 ? (
+        {step === STEP_COUNT - 1 ? (
           <Button
-            label="Create my itinerary"
+            label={t('planner.generate')}
             icon="✦"
             size="lg"
             loading={planning}
@@ -435,7 +446,7 @@ export default function Planner() {
           />
         ) : (
           <Button
-            label="Continue"
+            label={t('common.continue')}
             size="lg"
             disabled={!canAdvance}
             onPress={() => setStep(step + 1)}
@@ -459,11 +470,13 @@ function ReviewRow({
   label,
   value,
   onEdit,
+  editLabel,
   last,
 }: {
   label: string;
   value: string;
   onEdit: () => void;
+  editLabel: string;
   last?: boolean;
 }) {
   return (
@@ -472,8 +485,8 @@ function ReviewRow({
         <Text style={[typography.small, { color: colors.textMuted }]}>{label}</Text>
         <Text style={[typography.bodyStrong, { color: colors.text }]}>{value}</Text>
       </View>
-      <Pressable accessibilityRole="button" accessibilityLabel={`Change ${label}`} onPress={onEdit} hitSlop={8}>
-        <Text style={[typography.small, { color: colors.primary, fontWeight: '700' }]}>Change</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel={editLabel} onPress={onEdit} hitSlop={8}>
+        <Text style={[typography.small, { color: colors.primary, fontWeight: '700' }]}>{editLabel}</Text>
       </Pressable>
     </View>
   );
