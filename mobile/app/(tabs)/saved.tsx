@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { api } from '../../src/api/client';
 import type { Place } from '../../src/api/types';
 import { PlaceRow } from '../../src/components/PlaceCard';
@@ -19,6 +20,7 @@ import { colors, spacing, typography } from '../../src/theme';
 
 export default function Saved() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { addToBasket, inBasket, removeFromBasket } = usePlan();
 
   const [saved, setSaved] = useState<Array<{ savedAt: string; place: Place }>>([]);
@@ -34,7 +36,7 @@ export default function Saved() {
       const result = await api.me.savedPlaces();
       setSaved(result.items);
     } catch {
-      setError('Could not load your saved places.');
+      setError(t('errors.generic'));
     } finally {
       setLoading(false);
     }
@@ -69,11 +71,11 @@ export default function Saved() {
     return matchesCity && matchesSearch;
   });
 
-  if (loading) return <Loader label="Loading saved places…" />;
+  if (loading) return <Loader label={t('common.loading')} />;
 
   return (
     <Screen>
-      <AppHeader title="Saved places" subtitle={`${saved.length} saved`} onBack={false} />
+      <AppHeader title={t('saved.title')} subtitle={`${saved.length}`} onBack={false} />
 
       <ScrollView
         contentContainerStyle={styles.body}
@@ -91,19 +93,19 @@ export default function Saved() {
 
         {saved.length === 0 ? (
           <EmptyState
-            title="Nothing saved yet"
-            message="Tap Save on any place and it will wait for you here."
-            action="Explore places"
+            title={t('saved.empty')}
+            message={t('place.addToPlan')}
+            action={t('saved.browsePlaces')}
             onAction={() => router.push('/(tabs)/explore')}
             glyph="♡"
           />
         ) : (
           <>
-            <Field label="Search" value={search} onChangeText={setSearch} placeholder="Search saved places" />
+            <Field label={t('common.search')} value={search} onChangeText={setSearch} placeholder={t('explore.searchPlaceholder')} />
 
             {cities.length > 1 ? (
               <ChipRow>
-                <Chip label="All cities" selected={cityFilter === null} onPress={() => setCityFilter(null)} />
+                <Chip label={t('explore.byCity')} selected={cityFilter === null} onPress={() => setCityFilter(null)} />
                 {cities.map((city) => (
                   <Chip
                     key={city}
@@ -161,7 +163,7 @@ export default function Saved() {
 
               {visible.length === 0 ? (
                 <Text style={[typography.small, { color: colors.textMuted, textAlign: 'center' }]}>
-                  No saved place matches this filter.
+                  {t('saved.empty')}
                 </Text>
               ) : null}
             </View>

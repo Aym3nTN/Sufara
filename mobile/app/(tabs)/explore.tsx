@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { api } from '../../src/api/client';
 import type { Category, City, Place } from '../../src/api/types';
 import { MapCanvas, type MapMarkerSpec } from '../../src/components/map';
@@ -20,6 +21,7 @@ import { categoryGlyph } from '../../src/utils/format';
 
 export default function Explore() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { draft, setDraft, basket, inBasket, addToBasket, removeFromBasket } = usePlan();
 
   const [cities, setCities] = useState<City[]>([]);
@@ -42,7 +44,7 @@ export default function Explore() {
         setCities(cityResult.items);
         setCategories(categoryResult.items);
       } catch {
-        setError('Could not load the map data.');
+        setError(t('errors.generic'));
       }
     })();
   }, []);
@@ -60,7 +62,7 @@ export default function Explore() {
       setPlaces(result.items);
       setSelectedId(null);
     } catch {
-      setError('Could not load places for this city.');
+      setError(t('errors.generic'));
     } finally {
       setLoading(false);
     }
@@ -98,8 +100,8 @@ export default function Explore() {
   return (
     <Screen>
       <AppHeader
-        title="Explore map"
-        subtitle={city ? `${places.length} places in ${city.name}` : undefined}
+        title={t('explore.title')}
+        subtitle={city ? `${places.length} · ${city.name}` : undefined}
         onBack={false}
       />
 
@@ -115,7 +117,7 @@ export default function Explore() {
           ))}
         </ChipRow>
         <ChipRow>
-          <Chip label="All" selected={categoryId === null} onPress={() => setCategoryId(null)} />
+          <Chip label={t('common.search')} selected={categoryId === null} onPress={() => setCategoryId(null)} />
           {categories.map((category) => (
             <Chip
               key={category.id}
@@ -140,8 +142,8 @@ export default function Explore() {
           <Loader />
         ) : places.length === 0 ? (
           <EmptyState
-            title="Nothing to show"
-            message="No places match this filter yet."
+            title={t('saved.empty')}
+            message={t('planner.noCityAvailable')}
             glyph="🗺"
           />
         ) : (
@@ -177,8 +179,7 @@ export default function Explore() {
 
         {basket.length > 0 ? (
           <Text style={[typography.small, styles.basketHint]}>
-            {basket.length} {basket.length === 1 ? 'place' : 'places'} in My Visit — open the My Visit
-            tab to build a route.
+            {basket.length} · {t('tabs.journey')}
           </Text>
         ) : null}
       </View>

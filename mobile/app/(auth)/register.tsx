@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { ApiError } from '../../src/api/client';
 import { AppHeader, Button, Field, Notice, Screen } from '../../src/components/ui';
 import { useAuth } from '../../src/state/auth';
@@ -8,6 +9,7 @@ import { colors, spacing, typography } from '../../src/theme';
 
 export default function Register() {
   const router = useRouter();
+  const { t } = useTranslation();
   const { signUp, busy } = useAuth();
 
   const [name, setName] = useState('');
@@ -22,7 +24,7 @@ export default function Register() {
     setFieldErrors({});
 
     if (password !== confirm) {
-      setFieldErrors({ confirm: 'The two passwords do not match' });
+      setFieldErrors({ confirm: t('auth.passwordTooShort') });
       return;
     }
 
@@ -35,60 +37,60 @@ export default function Register() {
           Object.fromEntries(caught.details.map((detail) => [detail.field, detail.message])),
         );
       }
-      setError(caught instanceof ApiError ? caught.message : 'Could not create your account.');
+      setError(caught instanceof ApiError ? caught.message : t('errors.generic'));
     }
   };
 
   return (
     <Screen>
-      <AppHeader title="Create your account" />
+      <AppHeader title={t('auth.registerTitle')} />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Text style={[typography.body, { color: colors.textMuted }]}>
-            Save places, keep your itineraries and travel with your own preferences.
+            {t('auth.registerSubtitle')}
           </Text>
 
           <View style={styles.form}>
             <Field
-              label="Full name"
+              label={t('auth.name')}
               value={name}
               onChangeText={setName}
-              placeholder="Your name"
+              placeholder={t('auth.namePlaceholder')}
               autoCapitalize="words"
               error={fieldErrors.name}
             />
             <Field
-              label="Email"
+              label={t('auth.email')}
               value={email}
               onChangeText={setEmail}
-              placeholder="you@example.com"
+              placeholder={t('auth.emailPlaceholder')}
               keyboardType="email-address"
               error={fieldErrors.email}
             />
             <Field
-              label="Password"
+              label={t('auth.password')}
               value={password}
               onChangeText={setPassword}
-              placeholder="At least 8 characters"
+              placeholder={t('auth.passwordPlaceholder')}
               secureTextEntry
               error={fieldErrors.password}
-              hint="Use at least 8 characters."
+              hint={t('auth.passwordPlaceholder')}
             />
             <Field
-              label="Confirm password"
+              label={t('auth.password')}
               value={confirm}
               onChangeText={setConfirm}
-              placeholder="Repeat your password"
+              placeholder={t('auth.passwordPlaceholder')}
               secureTextEntry
               error={fieldErrors.confirm}
             />
 
             {error ? <Notice tone="danger">{error}</Notice> : null}
 
-            <Button label="Create account" size="lg" onPress={submit} loading={busy} />
+            <Button label={t('auth.registerAction')} size="lg" onPress={submit} loading={busy} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

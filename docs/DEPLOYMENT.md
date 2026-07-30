@@ -142,15 +142,30 @@ Gives you a shareable review URL alongside the native apps.
 | Build command | `npm ci && npm run build:web` |
 | Output directory | `dist` |
 | Environment variable | `EXPO_PUBLIC_API_URL = https://<your-render-url>/api/v1` |
+| Environment variable (optional) | `EXPO_PUBLIC_MAPTILER_API_KEY = <your MapTiler key>` |
 
-`EXPO_PUBLIC_API_URL` is **baked in at build time**, not read at runtime — change
-it and you must rebuild. Metro also caches aggressively; if a rebuild seems to
-ignore a changed URL, build with `npx expo export --platform web --clear`.
+`EXPO_PUBLIC_API_URL` and `EXPO_PUBLIC_MAPTILER_API_KEY` are **baked in at build
+time**, not read at runtime — change them and you must rebuild. Metro also
+caches aggressively; if a rebuild seems to ignore a changed URL, build with
+`npx expo export --platform web --clear`.
 
 `mobile/public/_redirects` and `_headers` are copied into the export
 automatically, giving the single-page app its deep-link fallback and security
-headers. On web the map is a schematic plan view — a tiled basemap needs a keyed
-provider — while native builds get the real basemap.
+headers.
+
+### Web basemap
+
+- With `EXPO_PUBLIC_MAPTILER_API_KEY` set, the web app renders a real tiled
+  basemap via MapLibre GL against MapTiler. Get a free key at
+  https://cloud.maptiler.com/account/keys/ (100k tile loads per month, no
+  credit card at signup).
+- Without it, the web app falls back to a schematic plan view — every planning
+  screen still works with zero setup. The engine is MapLibre GL (the
+  open-source fork of Mapbox GL); swapping MapTiler for another provider is
+  a one-line style URL change in `TiledMapCanvas.web.tsx`.
+
+Native builds still use the platform basemap (Apple Maps on iOS, Google Maps
+on Android via `GOOGLE_MAPS_ANDROID_API_KEY`) and do not depend on MapTiler.
 
 ---
 
