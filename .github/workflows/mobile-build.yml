@@ -29,10 +29,6 @@ on:
         type: choice
         options: [preview, production]
         default: preview
-      wait:
-        description: 'Wait for the build to finish (uses runner minutes, but surfaces build failures here)'
-        type: boolean
-        default: false
       submit:
         description: 'Submit to the store after building (production profile only)'
         type: boolean
@@ -56,7 +52,6 @@ jobs:
       # the fallback. These are the only values referenced below.
       PLATFORM: ${{ inputs.platform || 'android' }}
       PROFILE: ${{ inputs.profile || 'preview' }}
-      SHOULD_WAIT: ${{ inputs.wait || 'false' }}
       SHOULD_SUBMIT: ${{ inputs.submit || 'false' }}
 
     steps:
@@ -90,31 +85,75 @@ jobs:
               ;;
           esac
 
-      - name: Build
+      - name: Build (queue on EAS)
+        id: build
         env:
           # Consumed by app.config.ts so the CLI knows which EAS project this is.
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
         run: |
-          WAIT_FLAG="--no-wait"
-          if [ "${SHOULD_WAIT}" = "true" ]; then WAIT_FLAG="--wait"; fi
-          eas build \
+          # Always --no-wait so we can poll separately with a bounded timeout
+          # rather than tying up the runner if the EAS queue is backed up.
+          RESULT=$(eas build \
             --platform "${PLATFORM}" \
             --profile "${PROFILE}" \
             --non-interactive \
-            ${WAIT_FLAG}
+            --no-wait \
+            --json)
+          BUILD_ID=$(echo "${RESULT}" | jq -r '.[0].id // empty')
+          if [ -z "${BUILD_ID}" ]; then
+            echo "::error::eas build returned no build id"
+            echo "${RESULT}"
+            exit 1
+          fi
+          echo "Build id: ${BUILD_ID}"
+          echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Poll EAS until the artifact URL exists
+        # 40 attempts × 30s = 20 minutes. Enough for a typical preview APK on
+        # the free tier; extends gracefully to a "check expo.dev" note if the
+        # queue is unusually deep.
+        env:
+          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          BUILD_ID: ${{ steps.build.outputs.build_id }}
+        run: |
+          for attempt in $(seq 1 40); do
+            sleep 30
+            INFO=$(eas build:view "${BUILD_ID}" --non-interactive --json 2>/dev/null || echo '{}')
+            STATUS=$(echo "${INFO}" | jq -r '.status // "unknown"')
+            echo "attempt ${attempt}: status=${STATUS}"
+            case "${STATUS}" in
+              finished)
+                URL=$(echo "${INFO}" | jq -r '.artifacts.buildUrl // .artifacts.applicationArchiveUrl // empty')
+                if [ -z "${URL}" ]; then
+                  echo "::warning::Build finished but no artifact URL — check https://expo.dev/accounts/[your-account]/projects/sufara/builds/${BUILD_ID}"
+                  exit 0
+                fi
+                {
+                  echo "## 📱 APK ready to install"
+                  echo ""
+                  echo "**[⬇️ Direct download](${URL})**"
+                  echo ""
+                  echo "- Platform: \`${PLATFORM}\` · Profile: \`${PROFILE}\`"
+                  echo "- Build id: \`${BUILD_ID}\`"
+                  echo "- Expo page: <https://expo.dev/accounts/[your-account]/projects/sufara/builds/${BUILD_ID}>"
+                } >> "$GITHUB_STEP_SUMMARY"
+                echo "APK_URL=${URL}"
+                exit 0
+                ;;
+              errored|canceled)
+                echo "::error::EAS build ${STATUS} — see https://expo.dev/accounts/[your-account]/projects/sufara/builds/${BUILD_ID}"
+                exit 1
+                ;;
+            esac
+          done
+          {
+            echo "## ⏳ Build still on EAS"
+            echo ""
+            echo "The build hasn't finished within 20 min — Expo's queue may be busy. Check <https://expo.dev/accounts/[your-account]/projects/sufara/builds/${BUILD_ID}> for the direct download link."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Submit to store
         if: env.SHOULD_SUBMIT == 'true' && env.PROFILE == 'production'
         env:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
         run: eas submit --platform "${PLATFORM}" --profile production --non-interactive --latest
-
-      - name: Where to find the build
-        run: |
-          {
-            echo "### EAS build requested"
-            echo ""
-            echo "Platform: \`${PLATFORM}\` · Profile: \`${PROFILE}\`"
-            echo ""
-            echo "Download it from <https://expo.dev/accounts/[your-account]/projects/sufara/builds> — the \`preview\` profile produces an APK you can install directly."
-          } >> "$GITHUB_STEP_SUMMARY"
