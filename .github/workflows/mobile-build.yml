@@ -1,15 +1,11 @@
-name: Mobile build (EAS)
+name: Mobile build (APK)
 
-# Fires two ways:
+# Builds the Android APK directly on the GitHub-hosted runner using
+# expo prebuild + Gradle — no EAS cloud builds, no monthly limits.
+# On success, publishes a GitHub Release with the APK attached.
 #
-# 1. Automatically on every push to main that touches the mobile app, so the
-#    latest code always has a fresh preview APK waiting on Expo. Uses fixed
-#    settings (android / preview / no wait / no submit) since a push has no
-#    interactive inputs.
-# 2. Manually via workflow_dispatch when you need a different platform, an
-#    AAB, or a store submission.
-#
-# Concurrency is grouped so several fast pushes fold into one build slot.
+# Fires on every push to main that touches the mobile app, and on-demand
+# via workflow_dispatch.
 
 on:
   push:
@@ -18,41 +14,21 @@ on:
       - 'mobile/**'
       - '.github/workflows/mobile-build.yml'
   workflow_dispatch:
-    inputs:
-      platform:
-        description: 'Platform to build'
-        type: choice
-        options: [android, ios, all]
-        default: android
-      profile:
-        description: 'eas.json profile — preview produces an installable APK, production an AAB/IPA for the stores'
-        type: choice
-        options: [preview, production]
-        default: preview
-      submit:
-        description: 'Submit to the store after building (production profile only)'
-        type: boolean
-        default: false
+
+permissions:
+  contents: write   # required to create GitHub Releases
 
 concurrency:
-  # Coalesce rapid pushes so we don't queue N build slots for N commits.
   group: mobile-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: eas build (${{ inputs.platform || 'android' }} / ${{ inputs.profile || 'preview' }})
+    name: Build Android APK
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: mobile
-
-    env:
-      # workflow_dispatch inputs are empty strings on push events, so || picks
-      # the fallback. These are the only values referenced below.
-      PLATFORM: ${{ inputs.platform || 'android' }}
-      PROFILE: ${{ inputs.profile || 'preview' }}
-      SHOULD_SUBMIT: ${{ inputs.submit || 'false' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -63,97 +39,81 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
 
-      - name: Set up EAS
-        uses: expo/expo-github-action@v8
+      - uses: actions/setup-java@v4
         with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
+          distribution: temurin
+          java-version: 17
 
-      - run: npm ci
+      - name: Accept Android SDK licences
+        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || true
 
-      - name: Check the build is pointed at a real API
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Verify API URL is baked in
         run: |
-          URL=$(node -e "const c=require('./eas.json');process.stdout.write(c.build['${PROFILE}'].env.EXPO_PUBLIC_API_URL||'')")
-          echo "EXPO_PUBLIC_API_URL for '${PROFILE}': ${URL:-<unset>}"
+          URL=$(node -e "const c=require('./eas.json');process.stdout.write(c.build.preview.env.EXPO_PUBLIC_API_URL||'')")
+          echo "EXPO_PUBLIC_API_URL: ${URL:-<unset>}"
           if [ -z "${URL}" ]; then
-            echo "::error::eas.json has no EXPO_PUBLIC_API_URL for this profile. A standalone build would point at localhost and reach nothing."
+            echo "::error::eas.json preview profile has no EXPO_PUBLIC_API_URL"
             exit 1
           fi
-          case "${URL}" in
-            *sufara-api.onrender.com*)
-              echo "::warning::eas.json still holds the placeholder Render URL. Replace it with your deployed API before shipping this build to anyone."
-              ;;
-          esac
 
-      - name: Build (queue on EAS)
-        id: build
+      - name: Expo prebuild — generate Android native project
         env:
-          # Consumed by app.config.ts so the CLI knows which EAS project this is.
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
+          EXPO_PUBLIC_API_URL: https://sufara-api-0a1u.onrender.com/api/v1
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build debug APK
+        working-directory: mobile/android
         run: |
-          # Always --no-wait so we can poll separately with a bounded timeout
-          # rather than tying up the runner if the EAS queue is backed up.
-          RESULT=$(eas build \
-            --platform "${PLATFORM}" \
-            --profile "${PROFILE}" \
-            --non-interactive \
-            --no-wait \
-            --json)
-          BUILD_ID=$(echo "${RESULT}" | jq -r '.[0].id // empty')
-          if [ -z "${BUILD_ID}" ]; then
-            echo "::error::eas build returned no build id"
-            echo "${RESULT}"
+          chmod +x ./gradlew
+          ./gradlew assembleDebug --no-daemon -x test
+
+      - name: Locate APK and set outputs
+        id: apk
+        run: |
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          if [ -z "${APK}" ]; then
+            echo "::error::No APK found after build"
             exit 1
           fi
-          echo "Build id: ${BUILD_ID}"
-          echo "build_id=${BUILD_ID}" >> "$GITHUB_OUTPUT"
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          DATE=$(date +%Y%m%d)
+          echo "path=${APK}" >> "$GITHUB_OUTPUT"
+          echo "tag=v1.0-${DATE}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "title=Sufara Android ${DATE} (${SHORT_SHA})" >> "$GITHUB_OUTPUT"
+          echo "Built APK at: ${APK}"
 
-      - name: Poll EAS until the artifact URL exists
-        # 40 attempts × 30s = 20 minutes. Enough for a typical preview APK on
-        # the free tier; extends gracefully to a "check expo.dev" note if the
-        # queue is unusually deep.
+      - name: Create GitHub Release and upload APK
         env:
-          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
-          BUILD_ID: ${{ steps.build.outputs.build_id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          for attempt in $(seq 1 40); do
-            sleep 30
-            INFO=$(eas build:view "${BUILD_ID}" --non-interactive --json 2>/dev/null || echo '{}')
-            STATUS=$(echo "${INFO}" | jq -r '.status // "unknown"')
-            echo "attempt ${attempt}: status=${STATUS}"
-            case "${STATUS}" in
-              finished)
-                URL=$(echo "${INFO}" | jq -r '.artifacts.buildUrl // .artifacts.applicationArchiveUrl // empty')
-                if [ -z "${URL}" ]; then
-                  echo "::warning::Build finished but no artifact URL — check https://expo.dev/accounts/[your-account]/projects/sufara/builds/${BUILD_ID}"
-                  exit 0
-                fi
-                {
-                  echo "## 📱 APK ready to install"
-                  echo ""
-                  echo "**[⬇️ Direct download](${URL})**"
-                  echo ""
-                  echo "- Platform: \`${PLATFORM}\` · Profile: \`${PROFILE}\`"
-                  echo "- Build id: \`${BUILD_ID}\`"
-                  echo "- Expo page: <https://expo.dev/accounts/[your-account]/projects/sufara/builds/${BUILD_ID}>"
-                } >> "$GITHUB_STEP_SUMMARY"
-                echo "APK_URL=${URL}"
-                exit 0
-                ;;
-              errored|canceled)
-                echo "::error::EAS build ${STATUS} — see https://expo.dev/accounts/[your-account]/projects/sufara/builds/${BUILD_ID}"
-                exit 1
-                ;;
-            esac
-          done
+          NOTES="## Sufara Android APK
+
+          Sideload on any Android device — enable **Install from unknown sources** first.
+
+          | | |
+          |---|---|
+          | **API** | https://sufara-api-0a1u.onrender.com/api/v1 |
+          | **Commit** | \`${{ github.sha }}\` |
+          | **Built** | $(date -u +'%Y-%m-%d %H:%M UTC') |"
+
+          gh release create "${{ steps.apk.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ steps.apk.outputs.title }}" \
+            --notes "${NOTES}" \
+            --latest \
+            "${{ steps.apk.outputs.path }}#sufara.apk"
+
+          RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ steps.apk.outputs.tag }}"
+          echo "✅ GitHub Release: ${RELEASE_URL}"
+
           {
-            echo "## ⏳ Build still on EAS"
+            echo "## 📱 APK ready to install"
             echo ""
-            echo "The build hasn't finished within 20 min — Expo's queue may be busy. Check <https://expo.dev/accounts/[your-account]/projects/sufara/builds/${BUILD_ID}> for the direct download link."
+            echo "**[⬇️ Download sufara.apk](${RELEASE_URL})**"
+            echo ""
+            echo "Enable *Install from unknown sources* on your Android device, then open the file."
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Submit to store
-        if: env.SHOULD_SUBMIT == 'true' && env.PROFILE == 'production'
-        env:
-          EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
-        run: eas submit --platform "${PLATFORM}" --profile production --non-interactive --latest
