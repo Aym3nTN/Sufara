@@ -1,11 +1,10 @@
 name: Mobile build (APK)
 
-# Builds the Android APK directly on the GitHub-hosted runner using
+# Builds a standalone release APK on the GitHub-hosted runner using
 # expo prebuild + Gradle — no EAS cloud builds, no monthly limits.
+# Signs with the Android debug keystore (pre-installed on every runner)
+# so the APK installs without a Metro bundler or dev server.
 # On success, publishes a GitHub Release with the APK attached.
-#
-# Fires on every push to main that touches the mobile app, and on-demand
-# via workflow_dispatch.
 
 on:
   push:
@@ -24,7 +23,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build Android APK
+    name: Build Android APK (release)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -50,31 +49,95 @@ jobs:
       - name: Install JS dependencies
         run: npm ci
 
-      - name: Verify API URL is baked in
-        run: |
-          URL=$(node -e "const c=require('./eas.json');process.stdout.write(c.build.preview.env.EXPO_PUBLIC_API_URL||'')")
-          echo "EXPO_PUBLIC_API_URL: ${URL:-<unset>}"
-          if [ -z "${URL}" ]; then
-            echo "::error::eas.json preview profile has no EXPO_PUBLIC_API_URL"
-            exit 1
-          fi
-
       - name: Expo prebuild — generate Android native project
         env:
           EAS_PROJECT_ID: ${{ vars.EAS_PROJECT_ID }}
           EXPO_PUBLIC_API_URL: https://sufara-api-0a1u.onrender.com/api/v1
         run: npx expo prebuild --platform android --no-install
 
-      - name: Build debug APK
+      - name: Sign release build with the debug keystore
+        # The Android SDK ships a debug.keystore on every machine.
+        # Pointing the release buildType at it lets us produce a proper
+        # release APK (no Metro, standalone JS bundle) that can be
+        # sideloaded without needing a production signing certificate.
+        working-directory: mobile/android
+        run: |
+          KEYSTORE="$HOME/.android/debug.keystore"
+          # Generate it if somehow missing (shouldn't be, but safe)
+          if [ ! -f "${KEYSTORE}" ]; then
+            keytool -genkey -v \
+              -keystore "${KEYSTORE}" \
+              -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass android -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          # Append a keystore.properties file the Gradle script will pick up
+          cat > keystore.properties << EOF
+          storeFile=${KEYSTORE}
+          storePassword=android
+          keyAlias=androiddebugkey
+          keyPassword=android
+          EOF
+
+          # Patch app/build.gradle to load keystore.properties and use it
+          # for the release signing config (idempotent — only adds if not present)
+          if ! grep -q 'keystore.properties' app/build.gradle; then
+            python3 - << 'PYEOF'
+          import re, pathlib
+
+          gradle = pathlib.Path('app/build.gradle').read_text()
+
+          # 1. Load keystore.properties at the top of the android {} block
+          props_snippet = '''
+              def keystorePropsFile = rootProject.file("keystore.properties")
+              def keystoreProps = new Properties()
+              if (keystorePropsFile.exists()) { keystoreProps.load(new FileInputStream(keystorePropsFile)) }
+          '''
+          # 2. Add a signingConfigs block before buildTypes
+          signing_snippet = '''
+              signingConfigs {
+                  release {
+                      storeFile file(keystoreProps['storeFile'])
+                      storePassword keystoreProps['storePassword']
+                      keyAlias keystoreProps['keyAlias']
+                      keyPassword keystoreProps['keyPassword']
+                  }
+              }
+          '''
+          # 3. Point the release buildType at the signing config
+          gradle = re.sub(
+              r'(buildTypes\s*\{[^}]*release\s*\{)',
+              r'\1\n            signingConfig signingConfigs.release',
+              gradle,
+              count=1,
+              flags=re.DOTALL,
+          )
+
+          # Insert props loader + signingConfigs just before buildTypes
+          gradle = re.sub(
+              r'(\s*buildTypes\s*\{)',
+              props_snippet + signing_snippet + r'\1',
+              gradle,
+              count=1,
+          )
+
+          pathlib.Path('app/build.gradle').write_text(gradle)
+          print('app/build.gradle patched ✓')
+          PYEOF
+          fi
+
+      - name: Build release APK
         working-directory: mobile/android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon -x test
+          ./gradlew assembleRelease --no-daemon -x test
 
       - name: Locate APK and set outputs
         id: apk
         run: |
-          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          APK=$(find android/app/build/outputs/apk/release -name "*.apk" | head -1)
           if [ -z "${APK}" ]; then
             echo "::error::No APK found after build"
             exit 1
@@ -84,7 +147,7 @@ jobs:
           echo "path=${APK}" >> "$GITHUB_OUTPUT"
           echo "tag=v1.0-${DATE}-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
           echo "title=Sufara Android ${DATE} (${SHORT_SHA})" >> "$GITHUB_OUTPUT"
-          echo "Built APK at: ${APK}"
+          echo "Built APK: ${APK}"
 
       - name: Create GitHub Release and upload APK
         env:
@@ -92,7 +155,13 @@ jobs:
         run: |
           NOTES="## Sufara Android APK
 
-          Sideload on any Android device — enable **Install from unknown sources** first.
+          Standalone release APK — sideload on any Android device.
+
+          **Install steps:**
+          1. Download \`sufara.apk\` below
+          2. Open it on your Android device
+          3. If prompted, enable *Install from unknown sources* for your browser/Files app
+          4. Tap Install
 
           | | |
           |---|---|
@@ -109,11 +178,10 @@ jobs:
 
           RELEASE_URL="https://github.com/${{ github.repository }}/releases/tag/${{ steps.apk.outputs.tag }}"
           echo "✅ GitHub Release: ${RELEASE_URL}"
-
           {
-            echo "## 📱 APK ready to install"
+            echo "## 📱 APK ready"
             echo ""
             echo "**[⬇️ Download sufara.apk](${RELEASE_URL})**"
             echo ""
-            echo "Enable *Install from unknown sources* on your Android device, then open the file."
+            echo "Standalone release build — no dev server needed."
           } >> "$GITHUB_STEP_SUMMARY"
