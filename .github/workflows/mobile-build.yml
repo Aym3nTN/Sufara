@@ -2,8 +2,9 @@ name: Mobile build (APK)
 
 # Builds a standalone release APK on the GitHub-hosted runner using
 # expo prebuild + Gradle — no EAS cloud builds, no monthly limits.
-# Signs with the Android debug keystore (pre-installed on every runner)
-# so the APK installs without a Metro bundler or dev server.
+# assembleRelease bundles the JS into the APK (no Metro/dev server needed
+# at runtime) and Expo's default template signs it with the debug
+# keystore, so it installs and runs standalone.
 # On success, publishes a GitHub Release with the APK attached.
 
 on:
@@ -55,81 +56,18 @@ jobs:
           EXPO_PUBLIC_API_URL: https://sufara-api-0a1u.onrender.com/api/v1
         run: npx expo prebuild --platform android --no-install
 
-      - name: Sign release build with the debug keystore
-        # The Android SDK ships a debug.keystore on every machine.
-        # Pointing the release buildType at it lets us produce a proper
-        # release APK (no Metro, standalone JS bundle) that can be
-        # sideloaded without needing a production signing certificate.
-        working-directory: mobile/android
-        run: |
-          KEYSTORE="$HOME/.android/debug.keystore"
-          # Generate it if somehow missing (shouldn't be, but safe)
-          if [ ! -f "${KEYSTORE}" ]; then
-            keytool -genkey -v \
-              -keystore "${KEYSTORE}" \
-              -alias androiddebugkey \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass android -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-
-          # Append a keystore.properties file the Gradle script will pick up
-          cat > keystore.properties << EOF
-          storeFile=${KEYSTORE}
-          storePassword=android
-          keyAlias=androiddebugkey
-          keyPassword=android
-          EOF
-
-          # Patch app/build.gradle to load keystore.properties and use it
-          # for the release signing config (idempotent — only adds if not present)
-          if ! grep -q 'keystore.properties' app/build.gradle; then
-            python3 - << 'PYEOF'
-          import re, pathlib
-
-          gradle = pathlib.Path('app/build.gradle').read_text()
-
-          # 1. Load keystore.properties at the top of the android {} block
-          props_snippet = '''
-              def keystorePropsFile = rootProject.file("keystore.properties")
-              def keystoreProps = new Properties()
-              if (keystorePropsFile.exists()) { keystoreProps.load(new FileInputStream(keystorePropsFile)) }
-          '''
-          # 2. Add a signingConfigs block before buildTypes
-          signing_snippet = '''
-              signingConfigs {
-                  release {
-                      storeFile file(keystoreProps['storeFile'])
-                      storePassword keystoreProps['storePassword']
-                      keyAlias keystoreProps['keyAlias']
-                      keyPassword keystoreProps['keyPassword']
-                  }
-              }
-          '''
-          # 3. Point the release buildType at the signing config
-          gradle = re.sub(
-              r'(buildTypes\s*\{[^}]*release\s*\{)',
-              r'\1\n            signingConfig signingConfigs.release',
-              gradle,
-              count=1,
-              flags=re.DOTALL,
-          )
-
-          # Insert props loader + signingConfigs just before buildTypes
-          gradle = re.sub(
-              r'(\s*buildTypes\s*\{)',
-              props_snippet + signing_snippet + r'\1',
-              gradle,
-              count=1,
-          )
-
-          pathlib.Path('app/build.gradle').write_text(gradle)
-          print('app/build.gradle patched ✓')
-          PYEOF
-          fi
+      # Expo's generated app/build.gradle already points the `release`
+      # buildType at signingConfigs.debug out of the box (the standard
+      # convention for CI/test builds without a production keystore), so
+      # no manual signing setup is needed here.
 
       - name: Build release APK
         working-directory: mobile/android
+        env:
+          # The Gradle bundling task spawns the Metro/expo-export bundler
+          # as a subprocess — it needs this in its environment (not just at
+          # prebuild time) for EXPO_PUBLIC_* to be inlined into the JS bundle.
+          EXPO_PUBLIC_API_URL: https://sufara-api-0a1u.onrender.com/api/v1
         run: |
           chmod +x ./gradlew
           ./gradlew assembleRelease --no-daemon -x test
